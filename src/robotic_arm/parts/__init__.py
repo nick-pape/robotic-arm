@@ -54,3 +54,61 @@ def effective_material(shape, material: Material) -> Material:
         walls=RULES.structural_walls,
         nozzle=RULES.nozzle,
     )
+
+
+def carried_actuator(body: str):
+    """The actuator a link carries, and where it sits in that link's frame.
+
+    A joint's motor is mounted on its parent link, so a link carries the
+    actuator for the joint *below* it -- link3 carries the J4 motor, and so on.
+    Returns (Actuator, centre_mm, axis) or None for a link that carries none.
+    """
+    import importlib
+
+    from robotic_arm.actuators import JOINT_ACTUATOR, get
+    from robotic_arm.linkframes import link_frame
+
+    frame = link_frame(body)
+    if frame.child_name is None:
+        return None
+    # The child link's own joint is the one this link's motor drives.
+    child_joint = None
+    for joint, _ in JOINT_ACTUATOR.items():
+        if joint == f"joint{frame.child_name.removeprefix('link')}":
+            child_joint = joint
+    if child_joint is None:
+        return None
+
+    module = importlib.import_module(REGISTRY[body][0].__module__)
+    drums = getattr(module, "_drums", None)
+    if drums is None:
+        return None
+    _, child = drums()
+    return get(JOINT_ACTUATOR[child_joint]), child.centre, child.axis
+
+
+def actuator_mass_properties(body: str):
+    """Mass properties of the actuator a link carries, in the link's frame.
+
+    Modelled as a solid cylinder of the actuator's own envelope, scaled to its
+    published mass. That is far better than omitting it: an RS06 is 621 g
+    against a 166 g printed shell, so leaving it out would understate the link
+    by a factor of four and flatter every torque number downstream.
+    """
+    from dataclasses import replace
+
+    from robotic_arm.massprops import mass_properties
+    from robotic_arm.materials import Material
+    from robotic_arm.parts.cobot import Drum
+
+    carried = carried_actuator(body)
+    if carried is None:
+        return None
+    actuator, centre, axis = carried
+
+    diameter = min(actuator.bbox_mm[0], actuator.bbox_mm[1])
+    body_solid = Drum(centre, axis, diameter, actuator.bbox_mm[2]).solid()
+
+    # Pick a density that reproduces the published mass on this envelope.
+    density = actuator.mass_kg / (body_solid.volume * 1e-9)
+    return mass_properties(body_solid, Material(actuator.name, density))

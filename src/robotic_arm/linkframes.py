@@ -215,3 +215,75 @@ def fits_inside_stock(
 ) -> bool:
     """Whether a drum of `diameter` at `station` stays inside stock's silhouette."""
     return diameter / 2 <= inscribed_drum_radius(name, station, half_height)
+
+
+@dataclass(frozen=True)
+class ActuatorEnvelope:
+    """Where the actuator a link carries actually sits, in that link's frame.
+
+    Taken from the stock model's own motor mesh rather than inferred from the
+    joint origin. Inferring it was wrong by 30 mm on link3 and left the motor
+    hanging outside the printed shell -- visible the moment the motor meshes
+    were rendered, invisible in every number.
+    """
+
+    mesh: str
+    centre: np.ndarray  # mm
+    extent: np.ndarray  # mm, axis-aligned in the link frame
+
+    @property
+    def is_plausibly_one_motor(self) -> bool:
+        """Whether this mesh is a single actuator rather than a whole assembly.
+
+        link2's `motor_2_3` spans the entire 326 mm link, so it is a combined
+        mesh covering more than one motor and cannot be used to place a drum.
+        """
+        return bool(max(self.extent) < 120.0)
+
+
+def actuator_envelope(name: str) -> ActuatorEnvelope | None:
+    """The motor mesh carried by a link, measured in the link's frame."""
+    model = load_baseline()
+    bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
+    if bid < 0:
+        raise KeyError(name)
+
+    for g in range(model.ngeom):
+        if model.geom_bodyid[g] != bid or model.geom_group[g] != 2:
+            continue
+        mesh = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_MESH, model.geom_dataid[g])
+        if not (mesh or "").startswith("motor"):
+            continue
+        mid = model.geom_dataid[g]
+        first, count = model.mesh_vertadr[mid], model.mesh_vertnum[mid]
+        verts = (
+            model.mesh_vert[first : first + count] @ _quat2mat(model.geom_quat[g]).T
+            + model.geom_pos[g]
+        ) * M_TO_MM
+        lo, hi = verts.min(axis=0), verts.max(axis=0)
+        return ActuatorEnvelope(mesh, (lo + hi) / 2, hi - lo)
+    return None
+
+
+def drum_for_actuator(
+    name: str, axis: np.ndarray, clearance: float, wall: float
+) -> tuple[np.ndarray, float, float] | None:
+    """(centre, diameter, length) of a drum that encloses the carried motor.
+
+    Sized from the motor's measured envelope: its span along the drum axis sets
+    the length, its span across sets the diameter.
+    """
+    envelope = actuator_envelope(name)
+    if envelope is None or not envelope.is_plausibly_one_motor:
+        return None
+
+    axis = np.asarray(axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+    along = float(abs(envelope.extent @ axis))
+    across = float(max(e for e, a in zip(envelope.extent, abs(axis)) if a < 0.5))
+
+    return (
+        np.asarray(envelope.centre, dtype=float),
+        across + 2 * (wall + clearance),
+        along + 2 * (wall + clearance),
+    )

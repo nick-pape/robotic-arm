@@ -227,11 +227,36 @@ def generate_scene(model_path: Path, out: Path | None = None) -> Path:
     return out
 
 
-def cad_inertials() -> dict[str, MassProperties]:
+def cad_inertials(
+    solids: Mapping[str, object] | None = None,
+) -> dict[str, MassProperties]:
     """Mass properties for every printed part designed so far.
+
+    Each link's inertial is its printed shell **plus the actuator it carries**.
+    A joint's motor is mounted on its parent link, and it is not a small term:
+    an RS06 is 621 g against a 166 g shell. Leaving it out would make the twin
+    lighter than anything buildable and flatter every torque number downstream.
 
     Bodies absent from the registry keep their stock inertials, so the twin is
     always "stock, except where we have actually designed a replacement".
+    """
+    from robotic_arm.massprops import combine, mass_properties
+    from robotic_arm.parts import REGISTRY, actuator_mass_properties, effective_material
+
+    out = {}
+    for body, (build, material) in REGISTRY.items():
+        part = solids[body] if solids is not None else build()
+        shell = mass_properties(part, effective_material(part, material))
+        actuator = actuator_mass_properties(body)
+        out[body] = combine([shell, actuator]) if actuator else shell
+    return out
+
+
+def shell_only_inertials() -> dict[str, MassProperties]:
+    """Printed shells alone, without the actuators they carry.
+
+    Useful for a mass budget on the printed parts themselves (P1), which is a
+    different question from what the link weighs once assembled.
     """
     from robotic_arm.massprops import mass_properties
     from robotic_arm.parts import REGISTRY, effective_material
@@ -260,12 +285,7 @@ def generate_twin(
     spec = mujoco.MjSpec.from_file(str(BASELINE_MJCF))
 
     solids = {body: build() for body, (build, _) in REGISTRY.items()}
-    overrides = {
-        body: mass_properties(
-            solids[body], effective_material(solids[body], material)
-        )
-        for body, (_, material) in REGISTRY.items()
-    }
+    overrides = cad_inertials(solids)
     apply_inertials(spec, overrides)
     if visuals:
         apply_visual_meshes(spec, solids)
@@ -336,6 +356,11 @@ def apply_visual_meshes(spec: mujoco.MjSpec, solids: Mapping[str, object]) -> mu
         # offscreen renderer draws every group, and two coincident meshes
         # z-fight into a mess of streaks.
         for geom in extra:
+            # Keep the actuator meshes. They are real hardware that stays on
+            # the arm, and showing them is what makes a render able to answer
+            # whether a printed shell actually clears its motor.
+            if (geom.meshname or "").startswith("motor"):
+                continue
             spec.delete(geom)
     return spec
 

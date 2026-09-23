@@ -103,6 +103,13 @@ def _drums() -> tuple[Drum, Drum]:
         ),
         length=PARENT_LENGTH,
     )
+    # The housing encloses the actuator *body*, not its full installed
+    # envelope. The motor meshes measure about 82 mm across -- body plus
+    # connectors and output boss -- and sizing drums to that gave O92 housings
+    # that exceeded the stock envelope and produced 1676 clearance
+    # regressions. Stock does not enclose them either: its links are open
+    # brackets with the motors visibly exposed, which is why they show in the
+    # renders. A fully closed wrist would need more room than this arm has.
     child = Drum(
         centre=frame.child_origin,
         axis=frame.child_axis,
