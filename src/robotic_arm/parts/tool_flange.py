@@ -125,6 +125,22 @@ def build_tool_flange() -> Part:
     return flange.part
 
 
+def collision_primitives() -> list:
+    """Collision proxy: the flange is a plain disc, so one cylinder covers it."""
+    import numpy as np
+
+    from robotic_arm.parts.cobot import CollisionCylinder
+
+    return [
+        CollisionCylinder(
+            centre=np.array([0.0, 0.0, THICKNESS / 2]),
+            axis=np.array([0.0, 0.0, 1.0]),
+            radius=OUTER_DIAMETER / 2,
+            length=THICKNESS,
+        )
+    ]
+
+
 def _motor_mount_circle():
     """The RS00 output circle this flange bolts to.
 

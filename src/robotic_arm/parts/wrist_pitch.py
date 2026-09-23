@@ -20,15 +20,31 @@ from robotic_arm.actuators import RS00
 from robotic_arm.design import RULES
 from robotic_arm.linkframes import link_frame
 from robotic_arm.materials import PC_CF
-from robotic_arm.parts.cobot import Drum, bolt_ring, break_edges, seam_groove, shelled_body
+from robotic_arm.parts.cobot import (
+    CollisionCylinder,
+    Drum,
+    bolt_ring,
+    break_edges,
+    mount_boss_diameter,
+    seam_groove,
+    shelled_body,
+)
 
 MATERIAL = PC_CF
 BODY = "link4"
 
-#: J4 drum, the larger of the two -- it carries the whole wrist cantilevered
-#: off it, so it gets the bigger section.
-PARENT_DIAMETER = 76.0
-PARENT_LENGTH = 54.0
+#: J4 drum. A mounting boss, not a housing: the motor that drives J4 sits on
+#: link3, so nothing needs enclosing here. Two earlier revisions got this
+#: wrong -- O76 "because J4 carries the wrist", then O67 "to match the
+#: actuator" -- and the clearance sweep caught both fouling link2, because a
+#: full drum of that size fills a quadrant the stock arm leaves open.
+PARENT_LENGTH = 48.0
+
+#: How far the J4 drum may stand proud of the joint plane, towards link3.
+#: Stock reaches z = +12.5 mm here. A drum centred on the joint plane would
+#: reach +27 and foul link2 and the base through part of the workspace -- the
+#: clearance sweep caught exactly that.
+PARENT_PROTRUSION = 10.0
 
 #: J5 drum, enclosing the actuator that drives link5.
 CHILD_CLEARANCE = 3.0
@@ -47,14 +63,15 @@ def child_diameter() -> float:
     return body_diameter + 2 * (RULES.structural_wall_thickness + CHILD_CLEARANCE)
 
 
-def build_wrist_pitch() -> Part:
-    """Return the forearm-to-wrist link as a solid, in link4's frame."""
+def _drums() -> tuple[Drum, Drum]:
+    """The two joint drums. Shared by the solid and its collision proxy so the
+    two cannot drift apart."""
     frame = link_frame(BODY)
-
+    mount = {round(c.bcd, 2): c for c in RS00().bolt_circles}[27.0]
     parent = Drum(
-        centre=np.array([0.0, 0.0, 0.0]),
+        centre=np.array([0.0, 0.0, PARENT_PROTRUSION - PARENT_LENGTH / 2]),
         axis=frame.parent_axis,
-        diameter=PARENT_DIAMETER,
+        diameter=mount_boss_diameter(mount.bcd, RULES.m3_clearance),
         length=PARENT_LENGTH,
     )
     # Pull the child drum back along its own axis so its far face lands on the
@@ -65,6 +82,23 @@ def build_wrist_pitch() -> Part:
         diameter=child_diameter(),
         length=CHILD_LENGTH,
     )
+    return parent, child
+
+
+def collision_primitives() -> list[CollisionCylinder]:
+    """Collision proxy: one cylinder per drum, plus the connecting tube."""
+    parent, child = _drums()
+    return [
+        CollisionCylinder.from_drum(parent),
+        CollisionCylinder.from_drum(child),
+        CollisionCylinder.from_span(parent.centre, child.centre, TUBE_DIAMETER),
+    ]
+
+
+def build_wrist_pitch() -> Part:
+    """Return the forearm-to-wrist link as a solid, in link4's frame."""
+    frame = link_frame(BODY)
+    parent, child = _drums()
 
     part = shelled_body(parent, child, TUBE_DIAMETER)
 

@@ -188,3 +188,60 @@ def break_edges(part: Part, radius: float | None = None) -> Part:
         except Exception:  # noqa: BLE001 - cosmetic only, see docstring
             continue
     return part
+
+
+@dataclass(frozen=True)
+class CollisionCylinder:
+    """A cylinder standing in for part of a shell during collision checks.
+
+    MuJoCo treats every mesh geom as its convex hull, and these shells are
+    L-shaped: one hull round a two-drum wrist would swallow the space between
+    the drums and report collisions that do not exist. A handful of primitives
+    tracing the real form is both more accurate and far cheaper, which is what
+    the Menagerie models do too.
+
+    Built from the same drums as the visual solid, so the two cannot drift.
+    """
+
+    centre: np.ndarray
+    axis: np.ndarray
+    radius: float
+    length: float
+
+    @classmethod
+    def from_drum(cls, drum: Drum, inflate: float = 0.0) -> CollisionCylinder:
+        return cls(
+            centre=np.asarray(drum.centre, dtype=float),
+            axis=np.asarray(drum.axis, dtype=float),
+            radius=drum.diameter / 2 + inflate,
+            length=drum.length,
+        )
+
+    @classmethod
+    def from_span(
+        cls, start: np.ndarray, end: np.ndarray, diameter: float
+    ) -> CollisionCylinder:
+        start = np.asarray(start, dtype=float)
+        end = np.asarray(end, dtype=float)
+        delta = end - start
+        length = float(np.linalg.norm(delta))
+        if length < 1e-9:
+            raise ValueError("collision cylinder endpoints coincide")
+        return cls(
+            centre=(start + end) / 2,
+            axis=delta / length,
+            radius=diameter / 2,
+            length=length,
+        )
+
+
+def mount_boss_diameter(bcd: float, hole_diameter: float, margin: float = 2.5) -> float:
+    """Diameter of a drum that only has to carry a bolt circle.
+
+    A link's *parent* drum does not enclose its own actuator: the motor driving
+    a joint is mounted on the parent link, not the child. Only the *child* drum
+    houses a motor. Sizing a parent drum to an actuator therefore makes it far
+    too fat, filling space the stock arm leaves open -- which shows up as
+    self-collisions the stock arm does not have.
+    """
+    return bcd + 2 * (hole_diameter / 2 + RULES.structural_wall_thickness + margin)

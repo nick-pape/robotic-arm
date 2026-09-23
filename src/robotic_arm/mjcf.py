@@ -269,6 +269,7 @@ def generate_twin(
     apply_inertials(spec, overrides)
     if visuals:
         apply_visual_meshes(spec, solids)
+    apply_collision_primitives(spec, cad_collision_primitives())
     if balancer is not None:
         add_to_spec(spec, balancer)
 
@@ -337,3 +338,52 @@ def apply_visual_meshes(spec: mujoco.MjSpec, solids: Mapping[str, object]) -> mu
         for geom in extra:
             spec.delete(geom)
     return spec
+
+
+def apply_collision_primitives(
+    spec: mujoco.MjSpec, primitives: Mapping[str, list]
+) -> mujoco.MjSpec:
+    """Replace a body's stock collision hulls with the printed part's own.
+
+    Until this runs, a clearance sweep is checking Menagerie's decomposition of
+    the *stock* shape -- the right answer to the wrong question. The printed
+    shells are a different size, so their clearances are different too.
+
+    Cylinders rather than a mesh, because MuJoCo treats a mesh geom as its
+    convex hull and these shells are L-shaped: one hull round a two-drum wrist
+    would fill the space between the drums and invent collisions.
+    """
+    for body_name, cylinders in primitives.items():
+        body = spec.body(body_name)
+        for geom in [g for g in body.geoms if "_col_" in (g.meshname or "")]:
+            spec.delete(geom)
+
+        for index, cylinder in enumerate(cylinders):
+            quat = np.zeros(4)
+            mujoco.mju_quatZ2Vec(quat, np.asarray(cylinder.axis, dtype=float))
+            geom = body.add_geom(
+                name=f"{body_name}_col_{index}",
+                type=mujoco.mjtGeom.mjGEOM_CYLINDER,
+                # MuJoCo cylinders take (radius, half-length); CAD is in mm.
+                size=[cylinder.radius * 1e-3, cylinder.length / 2 * 1e-3, 0.0],
+                pos=np.asarray(cylinder.centre, dtype=float) * 1e-3,
+                quat=quat,
+            )
+            geom.group = 3
+            geom.contype, geom.conaffinity = 1, 1
+    return spec
+
+
+def cad_collision_primitives() -> dict[str, list]:
+    """Collision proxies for every printed part that provides one."""
+    import importlib
+
+    from robotic_arm.parts import REGISTRY
+
+    out: dict[str, list] = {}
+    for body, (build, _) in REGISTRY.items():
+        module = importlib.import_module(build.__module__)
+        maker = getattr(module, "collision_primitives", None)
+        if maker is not None:
+            out[body] = maker()
+    return out

@@ -22,14 +22,22 @@ from robotic_arm.actuators import RS00
 from robotic_arm.design import RULES
 from robotic_arm.linkframes import link_frame
 from robotic_arm.materials import PC_CF
-from robotic_arm.parts.cobot import Drum, bolt_ring, break_edges, seam_groove, shelled_body
+from robotic_arm.parts.cobot import (
+    CollisionCylinder,
+    Drum,
+    bolt_ring,
+    break_edges,
+    mount_boss_diameter,
+    seam_groove,
+    shelled_body,
+)
 
 MATERIAL = PC_CF
 BODY = "link5"
 
-#: J5 drum. Diameter follows the stock envelope's narrow axis so the wrist
-#: keeps its proportions; length spans the bearing and its seat.
-PARENT_DIAMETER = 64.0
+#: J5 drum. A mounting boss rather than a housing -- the motor driving J5 is
+#: on link4, so there is nothing to enclose here. Only the child drum houses an
+#: actuator.
 PARENT_LENGTH = 42.0
 
 #: J6 drum, sized to enclose the RS00 that drives the tool flange. The
@@ -52,14 +60,15 @@ def child_diameter() -> float:
     return body_diameter + 2 * (RULES.structural_wall_thickness + CHILD_CLEARANCE)
 
 
-def build_wrist_roll() -> Part:
-    """Return the wrist-roll housing as a solid, in link5's frame."""
+def _drums() -> tuple[Drum, Drum]:
+    """The two joint drums. Shared by the solid and its collision proxy so the
+    two cannot drift apart."""
     frame = link_frame(BODY)
-
+    mount = {round(c.bcd, 2): c for c in RS00().bolt_circles}[27.0]
     parent = Drum(
         centre=np.array([0.0, 0.0, PARENT_LENGTH / 2 - 8.0]),
         axis=frame.parent_axis,
-        diameter=PARENT_DIAMETER,
+        diameter=mount_boss_diameter(mount.bcd, RULES.m3_clearance),
         length=PARENT_LENGTH,
     )
     child = Drum(
@@ -68,6 +77,25 @@ def build_wrist_roll() -> Part:
         diameter=child_diameter(),
         length=CHILD_LENGTH,
     )
+    return parent, child
+
+
+def collision_primitives() -> list[CollisionCylinder]:
+    """Collision proxy: one cylinder per drum, plus the connecting tube."""
+    parent, child = _drums()
+    return [
+        CollisionCylinder.from_drum(parent),
+        CollisionCylinder.from_drum(child),
+        CollisionCylinder.from_span(
+            parent.centre + parent.axis * 6.0, child.centre, TUBE_DIAMETER
+        ),
+    ]
+
+
+def build_wrist_roll() -> Part:
+    """Return the wrist-roll housing as a solid, in link5's frame."""
+    frame = link_frame(BODY)
+    parent, child = _drums()
 
     part = shelled_body(parent, child, TUBE_DIAMETER, tube_from=6.0)
 
