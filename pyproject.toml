@@ -6,6 +6,10 @@ readme = "README.md"
 requires-python = ">=3.11,<3.15"
 dependencies = [
     "build123d>=0.10,<0.12",
+    # Pinned tight: MjSpec is actively churning (3.14.0 shipped 2026-09-22
+    # with breaking changes).
+    "mujoco>=3.14,<4",
+    "numpy>=2",
 ]
 
 [project.optional-dependencies]

@@ -1,87 +1,93 @@
 # robotic-arm
 
-Parametric CAD models for a servo-driven robotic arm, written in
-[build123d](https://build123d.readthedocs.io/) and set up to be modelled
-interactively through [build123d-mcp](https://github.com/pzfreo/build123d-mcp).
+A MuJoCo digital twin of the [reBot Arm B601-RS](https://wiki.seeedstudio.com/rebot_b601_rs_getting_started/)
+with a custom FDM-printed structure, and the [build123d](https://build123d.readthedocs.io/)
+CAD that generates it.
 
-All dimensions are in millimetres.
+The engineering brief is `spec/rebot-arm-b601-rs-clone.md`.
 
 ## Setup
 
-Requires [uv](https://github.com/astral-sh/uv) and Python 3.11–3.14.
+Requires [uv](https://github.com/astral-sh/uv) and Python 3.11-3.14.
 
 ```bash
 uv sync --extra dev
+uv run python scripts/fetch_reference.py   # ~16 MB of upstream meshes and STEP
 ```
+
+The fetch step is separate because reference meshes are pinned but not
+committed — see `reference/PROVENANCE.md`.
 
 ## Usage
 
-Build and export every part to `exports/`:
-
 ```bash
-uv run python -m robotic_arm.export
+uv run pytest                        # verification suite
+uv run python -m robotic_arm.torque  # actuator torque budget
 ```
 
-Check dimensions:
+## Two sources of truth
 
-```bash
-uv run pytest
+The spec's requirement F2 is "only `<inertial>` blocks differ from stock". That
+is the architecture, not a convention:
+
+- **joint frames and kinematics** come from the stock Seeed URDF, vendored at a
+  pinned commit in `reference/` and never edited;
+- **inertial properties** come from our build123d CAD.
+
+Tests assert the frames never drift. `reference/` is upstream material only.
+
+## Status
+
+| Milestone | State |
+|---|---|
+| M0 vendor ground truth | done — URDF, Menagerie MJCF, RobStride STEP, checksummed |
+| M1 stock baseline in MuJoCo | done — loads, simulates, verified to be the RS arm |
+| M2 torque budget from real inertials | done — see below |
+| M3 mass-properties pipeline | next |
+| M4 RS06 bolt pattern from STEP | |
+| M5 printed parts, distal-first | |
+| M6 J2 balancer | |
+| M7 thermal, CAN, e-stop | |
+
+## What the real inertials say
+
+The spec's load model was built on an estimated mass distribution and says so:
+*"Replace them with the URDF inertials."* Doing that moves the answer
+materially — `uv run python -m robotic_arm.torque`:
+
+```
+J2 self-weight only: 15.36 N*m = 140% of rated, 199% of derated, 43% of peak
+spec estimated 10.7 N*m -> real is +44%
 ```
 
-Print a single part's stats:
+The gap is distal mass: the spec assumed 3.3 kg beyond J2, the real figure is
+**4.37 kg**. So **the unbalanced arm cannot hold its own weight at full reach
+continuously**, before any payload at all. That makes the J2 gravity balancer
+load-bearing for the design rather than an optimisation, and it means the
+balancer must cancel more than the spec's 8 N·m target.
 
-```bash
-uv run python -m robotic_arm.parts.base_plate
-```
-
-## Modelling with an AI assistant
-
-`.mcp.json` registers the `build123d-mcp` server, which gives an assistant CAD
-tools: execute build123d code in a live session, render PNG/SVG previews,
-measure volumes and bounding boxes, check printability, and export STEP/STL/DXF.
-It lets the assistant check geometry as it builds instead of writing a script
-blind.
-
-Claude Code picks the server up from `.mcp.json` on start — approve it when
-prompted. Verify the server can launch:
-
-```bash
-uv tool run --python 3.12 build123d-mcp@latest --version
-```
-
-The server runs in its own isolated environment, so it does not need
-`uv sync` to have been run first.
-
-A useful prompt shape:
-
-> Use build123d-mcp. Build the forearm link incrementally, render after the main
-> features, measure the final dimensions, run `validate()`, and export STEP if it
-> passes.
-
-You can also ask the assistant to call
-`install_skill(target="claude", skill="modeling")` to drop the server's own
-modelling workflow guidance into the repo.
+Requirement P2 is currently a deliberate `xfail` in the suite; it flips to
+passing when the balancer lands in M6.
 
 ## Layout
 
 ```
+reference/          vendored upstream, read-only — URDF, MJCF, STEP
 src/robotic_arm/
-  params.py          shared dimensions — servo, base, links, fasteners
-  export.py          builds every part and writes exports/
-  parts/
-    base_plate.py    rounded base plate, corner holes, servo horn bore
-tests/               dimensional checks
-exports/             generated STEP/STL (gitignored)
+  reference.py      load the stock baseline model
+  torque.py         gravity-torque analysis vs actuator limits
+scripts/
+  fetch_reference.py  pinned, checksummed fetch of large artifacts
+spec/               engineering brief
+tests/              one case per spec requirement ID
 ```
 
-Parts import their dimensions from `params.py` rather than hardcoding them, so
-changing a servo or fastener size propagates through the assembly. Add a new
-part as a `build_*` function in `parts/`, export it from `parts/__init__.py`,
-and register it in `export.py`.
+## Modelling with an AI assistant
 
-## Version note
+`.mcp.json` registers [build123d-mcp](https://github.com/pzfreo/build123d-mcp),
+which gives an assistant a live CAD session: execute build123d code, render and
+measure geometry, check printability, and export STEP/STL. Claude Code picks it
+up from `.mcp.json` on start.
 
-The build123d dependency is pinned to `>=0.10,<0.12` to match the range
-`build123d-mcp` supports, so code developed in an MCP session behaves the same
-way when it lands in this repo. Newer build123d releases exist; if you stop
-using the MCP server, this pin can be relaxed.
+The build123d pin (`>=0.10,<0.12`) matches the MCP server's build123d 0.11.1, so
+CAD developed in an MCP session behaves identically in the repo.
