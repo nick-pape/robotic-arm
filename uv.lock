@@ -852,6 +852,18 @@ wheels = [
 ]
 
 [[package]]
+name = "quiddity"
+version = "0.3.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "build123d" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ab/cb/9fc0e8c5235fb8e89b2f9142c319da0380fb51d34767c19ff3041251415f/quiddity-0.3.4.tar.gz", hash = "sha256:1e3088d2e04549182a2d7f27ab24db2b3cf5ff2c19f3542ae303805f06cf44b8", size = 17342096, upload-time = "2026-09-22T18:09:55.396Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9a/42/5cb57c0b2e916afd51c6107aca3ca6abf81d63f051ce64c817f0d05cbb4e/quiddity-0.3.4-py3-none-any.whl", hash = "sha256:093ccfc6e144354db5ebc1786c169e1515641400694814a2123bc48f2636e733", size = 518739, upload-time = "2026-09-22T18:09:53.236Z" },
+]
+
+[[package]]
 name = "requests"
 version = "2.34.2"
 source = { registry = "https://pypi.org/simple" }
@@ -878,6 +890,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+cad = [
+    { name = "quiddity" },
+]
 dev = [
     { name = "pytest" },
 ]
@@ -888,8 +903,9 @@ requires-dist = [
     { name = "mujoco", specifier = ">=3.14,<4" },
     { name = "numpy", specifier = ">=2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
+    { name = "quiddity", marker = "extra == 'cad'", specifier = ">=0.3,<0.4" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["dev", "cad"]
 
 [[package]]
 name = "scikit-learn"

@@ -18,34 +18,15 @@ from dataclasses import dataclass
 import mujoco
 import numpy as np
 
-from robotic_arm.reference import ARM_JOINTS, JOINT_ACTUATOR, load_baseline
+from robotic_arm.actuators import JOINT_ACTUATOR, for_joint, get
+from robotic_arm.reference import ARM_JOINTS, load_baseline
 
 GRAVITY = 9.81
 
 
-@dataclass(frozen=True)
-class ActuatorSpec:
-    """RobStride actuator limits, from the vendor specification sheet."""
-
-    name: str
-    rated_nm: float
-    peak_nm: float
-    mass_kg: float
-    gear_ratio: float
-
-    def derated_nm(self, factor: float = 0.7) -> float:
-        """Continuous torque without the specified aluminium heat sink.
-
-        RobStride's rated figures assume a heat-sink plate. An actuator mounted
-        into a printed link has none, so the spec assumes 60-70% of rated is
-        available continuously. `factor` defaults to the optimistic end.
-        """
-        return self.rated_nm * factor
-
-
-RS06 = ActuatorSpec("RS06", rated_nm=11.0, peak_nm=36.0, mass_kg=0.621, gear_ratio=9.0)
-RS00 = ActuatorSpec("RS00", rated_nm=5.0, peak_nm=14.0, mass_kg=0.310, gear_ratio=10.0)
-ACTUATORS = {"RS06": RS06, "RS00": RS00}
+def _rs06():
+    """The J1-J3 actuator; J2 sets the budget."""
+    return get("RS06")
 
 
 @dataclass(frozen=True)
@@ -123,7 +104,7 @@ def report(model: mujoco.MjModel | None = None) -> str:
         f"{'joint':8s} {'actuator':9s} {'tau':>8s} {'rated':>8s} {'derated':>8s} {'peak':>8s}",
     ]
     for i, joint in enumerate(ARM_JOINTS):
-        act = ACTUATORS[JOINT_ACTUATOR[joint]]
+        act = for_joint(joint)
         lines.append(
             f"{joint:8s} {act.name:9s} {pose.torques[i]:8.3f} {act.rated_nm:8.1f} "
             f"{act.derated_nm():8.1f} {act.peak_nm:8.1f}"
@@ -131,16 +112,16 @@ def report(model: mujoco.MjModel | None = None) -> str:
     j2 = pose.torques[1]
     lines += [
         "",
-        f"J2 self-weight only: {j2:.2f} N*m = {j2 / RS06.rated_nm:.0%} of rated, "
-        f"{j2 / RS06.derated_nm():.0%} of derated, {j2 / RS06.peak_nm:.0%} of peak",
+        f"J2 self-weight only: {j2:.2f} N*m = {j2 / _rs06().rated_nm:.0%} of rated, "
+        f"{j2 / _rs06().derated_nm():.0%} of derated, {j2 / _rs06().peak_nm:.0%} of peak",
         f"spec estimated 10.7 N*m -> real is {j2 / 10.7 - 1:+.0%}",
         "",
         "payload at worst-case reach:",
     ]
     for payload in (0.0, 1.0, 2.5, 5.0):
         tau = payload_torque_j2(pose, payload)
-        verdict = "peak-only" if tau <= RS06.peak_nm else "INFEASIBLE"
-        if tau <= RS06.derated_nm():
+        verdict = "peak-only" if tau <= _rs06().peak_nm else "INFEASIBLE"
+        if tau <= _rs06().derated_nm():
             verdict = "continuous"
         lines.append(f"  {payload:4.1f} kg -> {tau:7.2f} N*m  {verdict}")
     return "\n".join(lines)

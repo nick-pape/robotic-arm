@@ -8,7 +8,8 @@ answer turned out to differ materially from the estimate.
 import numpy as np
 import pytest
 
-from robotic_arm.torque import RS06, payload_torque_j2, worst_case_j2
+from robotic_arm.actuators import RS06
+from robotic_arm.torque import payload_torque_j2, worst_case_j2
 
 
 @pytest.fixture(scope="module")
@@ -41,14 +42,14 @@ def test_self_weight_alone_exceeds_rated_torque(worst):
     """Unbalanced, the arm cannot hold itself at full reach continuously --
     before any payload. This is what forces the J2 gravity balancer.
     """
-    assert worst.torques[1] > RS06.rated_nm
-    assert worst.torques[1] > RS06.derated_nm()
-    assert worst.torques[1] < RS06.peak_nm, "still inside peak, so briefly reachable"
+    assert worst.torques[1] > RS06().rated_nm
+    assert worst.torques[1] > RS06().derated_nm()
+    assert worst.torques[1] < RS06().peak_nm, "still inside peak, so briefly reachable"
 
 
 def test_five_kg_payload_is_infeasible(worst):
     """Seeed advertise 5 kg max. At full reach that exceeds even peak torque."""
-    assert payload_torque_j2(worst, 5.0) > RS06.peak_nm
+    assert payload_torque_j2(worst, 5.0) > RS06().peak_nm
 
 
 def test_rated_payload_needs_peak_torque(worst):
@@ -56,7 +57,7 @@ def test_rated_payload_needs_peak_torque(worst):
     reach, consistent with the spec's reading of it as a 70%-workspace figure.
     """
     tau = payload_torque_j2(worst, 2.5)
-    assert RS06.derated_nm() < tau < RS06.peak_nm
+    assert RS06().derated_nm() < tau < RS06().peak_nm
 
 
 @pytest.mark.xfail(
@@ -68,4 +69,4 @@ def test_p2_j2_within_derated_limit(worst):
     derated rated torque. Currently fails by design -- no balancer exists yet.
     Flips to passing when M6 lands, which is the point.
     """
-    assert payload_torque_j2(worst, 1.0) <= RS06.derated_nm()
+    assert payload_torque_j2(worst, 1.0) <= RS06().derated_nm()

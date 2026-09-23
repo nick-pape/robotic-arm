@@ -1,0 +1,179 @@
+{
+  "_note": "Measured from RobStride vendor STEP files; see reference/PROVENANCE.md for pinned commits. Regenerate with scripts/measure_actuators.py. Coordinates are the STEP's own frame, millimetres.",
+  "actuators": {
+    "RS06": {
+      "source_file": "RS06-new.step",
+      "volume_mm3": 238549.345,
+      "bbox_mm": {
+        "x": 84.5,
+        "y": 82.0,
+        "z": 50.5
+      },
+      "bolt_circles": [
+        {
+          "bcd": 24.02,
+          "count": 6,
+          "hole_diameter": 3.3,
+          "depth": 6.5,
+          "bottom": "drill_point",
+          "counterbore": null,
+          "plane_z": -1.0,
+          "axis_z": 1.0,
+          "angles_deg": [
+            -150.0,
+            -90.0,
+            -30.0,
+            30.0,
+            90.0,
+            150.0
+          ],
+          "pitch_deg": 60.0
+        },
+        {
+          "bcd": 24.02,
+          "count": 3,
+          "hole_diameter": 2.5,
+          "depth": 2.0,
+          "bottom": "through",
+          "counterbore": {
+            "diameter": 4.0,
+            "depth": 0.8
+          },
+          "plane_z": 5.8,
+          "axis_z": -1.0,
+          "angles_deg": [
+            -120.0,
+            0.0,
+            120.0
+          ],
+          "pitch_deg": 120.0
+        },
+        {
+          "bcd": 82.0,
+          "count": 8,
+          "hole_diameter": 2.5,
+          "depth": 8.0,
+          "bottom": "drill_point",
+          "counterbore": null,
+          "plane_z": 0.5,
+          "axis_z": 1.0,
+          "angles_deg": [
+            -157.5,
+            -112.5,
+            -67.5,
+            -22.5,
+            22.5,
+            67.5,
+            112.5,
+            157.5
+          ],
+          "pitch_deg": 45.0
+        }
+      ]
+    },
+    "RS00": {
+      "source_file": "RS00.step",
+      "volume_mm3": 127907.706,
+      "bbox_mm": {
+        "x": 57.0,
+        "y": 57.0,
+        "z": 51.4
+      },
+      "bolt_circles": [
+        {
+          "bcd": 24.46,
+          "count": 3,
+          "hole_diameter": 3.0,
+          "depth": 3.1,
+          "bottom": "flat",
+          "counterbore": null,
+          "plane_z": -5.2,
+          "axis_z": 1.0,
+          "angles_deg": [
+            -120.0,
+            0.0,
+            120.0
+          ],
+          "pitch_deg": 120.0
+        },
+        {
+          "bcd": 27.0,
+          "count": 6,
+          "hole_diameter": 3.0,
+          "depth": 4.8,
+          "bottom": "flat",
+          "counterbore": null,
+          "plane_z": -5.2,
+          "axis_z": 1.0,
+          "angles_deg": [
+            -150.0,
+            -90.0,
+            -30.0,
+            30.0,
+            90.0,
+            150.0
+          ],
+          "pitch_deg": 60.0
+        },
+        {
+          "bcd": 38.0,
+          "count": 4,
+          "hole_diameter": 1.6,
+          "depth": 3.5,
+          "bottom": "flat",
+          "counterbore": {
+            "diameter": 2.5,
+            "depth": 7.0
+          },
+          "plane_z": 46.0,
+          "axis_z": -1.0,
+          "angles_deg": [
+            -135.0,
+            -45.0,
+            45.0,
+            135.0
+          ],
+          "pitch_deg": 90.0
+        },
+        {
+          "bcd": 50.0,
+          "count": 6,
+          "hole_diameter": 2.5,
+          "depth": 5.5,
+          "bottom": "drill_point",
+          "counterbore": null,
+          "plane_z": -5.0,
+          "axis_z": 1.0,
+          "angles_deg": [
+            -120.0,
+            -60.0,
+            0.0,
+            60.0,
+            120.0,
+            180.0
+          ],
+          "pitch_deg": 60.0
+        },
+        {
+          "bcd": 53.0,
+          "count": 6,
+          "hole_diameter": 2.4,
+          "depth": 3.3,
+          "bottom": "flat",
+          "counterbore": null,
+          "plane_z": -2.0,
+          "axis_z": 1.0,
+          "angles_deg": [
+            -150.0,
+            -90.0,
+            -30.0,
+            30.0,
+            90.0,
+            150.0
+          ],
+          "pitch_deg": 60.0
+        }
+      ]
+    }
+  }
+}

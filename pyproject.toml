@@ -16,6 +16,11 @@ dependencies = [
 dev = [
     "pytest>=8",
 ]
+# Feature recognition, used only to re-derive actuator geometry from vendor
+# STEP files. Not needed at runtime: the result is committed as JSON.
+cad = [
+    "quiddity>=0.3,<0.4",
+]
 
 [build-system]
 requires = ["hatchling"]
