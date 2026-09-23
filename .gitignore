@@ -27,3 +27,6 @@ snapshots/
 Thumbs.db
 .vscode/
 .idea/
+
+# Generated simulation models (regenerate: uv run python -m robotic_arm.mjcf)
+sim/

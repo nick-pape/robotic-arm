@@ -21,8 +21,10 @@ committed — see `reference/PROVENANCE.md`.
 ## Usage
 
 ```bash
-uv run pytest                        # verification suite
-uv run python -m robotic_arm.torque  # actuator torque budget
+uv run pytest                          # verification suite
+uv run python -m robotic_arm.torque    # actuator torque budget
+uv run python -m robotic_arm.mjcf      # generate sim/model.xml
+python -m mujoco.viewer --mjcf=sim/model.xml
 ```
 
 ## Two sources of truth
@@ -34,40 +36,77 @@ is the architecture, not a convention:
   pinned commit in `reference/` and never edited;
 - **inertial properties** come from our build123d CAD.
 
-Tests assert the frames never drift. `reference/` is upstream material only.
+`mjcf.generate()` cannot violate this, because it has no code path that writes
+anything but inertials — and `frame_differences()` proves it afterwards rather
+than assuming it.
 
 ## Status
+
+Infrastructure is complete; no part designs are committed yet, pending design
+input.
 
 | Milestone | State |
 |---|---|
 | M0 vendor ground truth | done — URDF, Menagerie MJCF, RobStride STEP, checksummed |
 | M1 stock baseline in MuJoCo | done — loads, simulates, verified to be the RS arm |
 | M2 torque budget from real inertials | done — see below |
-| M3 mass-properties pipeline | next |
-| M4 RS06 bolt pattern from STEP | |
-| M5 printed parts, distal-first | |
-| M6 J2 balancer | |
-| M7 thermal, CAN, e-stop | |
+| M3 mass-properties pipeline | done — validated against closed-form solutions |
+| M4 RS06 bolt pattern from STEP | done — measured, and corrected a published error |
+| M5 CAD→MJCF generator | done — path proven end to end, F2 enforced |
+| M6 J2 balancer | done — sized by optimisation; P2 not met, see below |
+| M7 thermal and current limits | done |
+| Part design | **next — needs design input** |
 
 ## What the real inertials say
 
 The spec's load model was built on an estimated mass distribution and says so:
-*"Replace them with the URDF inertials."* Doing that moves the answer
-materially — `uv run python -m robotic_arm.torque`:
+*"Replace them with the URDF inertials."* Doing that moves the answer —
+`uv run python -m robotic_arm.torque`:
 
 ```
-J2 self-weight only: 15.36 N*m = 140% of rated, 199% of derated, 43% of peak
+J2 self-weight only: 15.36 N*m = 140% of rated, 43% of peak
 spec estimated 10.7 N*m -> real is +44%
 ```
 
 The gap is distal mass: the spec assumed 3.3 kg beyond J2, the real figure is
-**4.37 kg**. So **the unbalanced arm cannot hold its own weight at full reach
-continuously**, before any payload at all. That makes the J2 gravity balancer
-load-bearing for the design rather than an optimisation, and it means the
-balancer must cancel more than the spec's 8 N·m target.
+**4.37 kg**.
 
-Requirement P2 is currently a deliberate `xfail` in the suite; it flips to
-passing when the balancer lands in M6.
+### This does not mean the stock arm is broken
+
+It is a shipping product and it works. `thermal.py` gives the physically
+meaningful reading: holding full extension draws 19.9 Apk against a 14.3 Apk
+continuous rating but only 57 Apk peak, dissipating ~69 W. That pose is
+**time-limited by heat, not impossible** — which is exactly what Seeed's own
+"stay within about 70% of the workspace" warning and the firmware's
+80/100/140 °C gating are about.
+
+Where stock and clone genuinely differ is the heat path. Stock bolts J2 to an
+aluminium flange that conducts into the sheet-metal link, which is what
+RobStride's rated figures assume. A printed link has none, so the spec assumes
+60–70% of rated continuously (~7.7 N·m) — and against *that* budget the
+unbalanced clone cannot hold itself at reach at all.
+
+## What the balancer achieves
+
+Sizing the J2 spring is an optimisation, not "cancel the peak": over-springing
+makes the worst case worse, because at folded poses the gravity moment is small
+and an oversized spring drives the joint the other way.
+
+The optimum cancels **8.25 N·m** (k = 1375 N/m, 220 N peak force), taking
+worst-case J2 from 15.36 → **7.13 N·m**, inside the clone's continuous budget.
+That is the figure the spec recommended — which its own low self-weight
+estimate did not actually support.
+
+But **P2 is not met**. The balanced residual consumes ~7.1 of the ~7.7 N·m
+budget, leaving room for ~0.05 kg continuous payload at worst-case pose, not
+the 1.0 kg the spec hoped for. Intermittent capability does improve markedly
+(3.25 → 4.55 kg within peak torque).
+
+The limit is shape, not magnitude: a J2-only spring cannot cancel the
+J3-folding term. Closing it needs a different topology — a J3 balancer, or a
+parallelogram keeping the distal COM fixed — or a reduced working envelope.
+That is a design decision, so P2 is a `strict=True` xfail carrying the
+reasoning rather than a silently missing test.
 
 ## Layout
 
@@ -75,12 +114,29 @@ passing when the balancer lands in M6.
 reference/          vendored upstream, read-only — URDF, MJCF, STEP
 src/robotic_arm/
   reference.py      load the stock baseline model
+  actuators.py      RS06/RS00 ratings + measured bolt geometry
+  materials.py      densities, with an infill model
+  massprops.py      build123d solid -> mass, COM, inertia tensor
+  mjcf.py           generate the twin: stock frames + CAD inertials
+  balancer.py       J2 zero-free-length spring, sizing and residuals
   torque.py         gravity-torque analysis vs actuator limits
+  thermal.py        current and heat — what actually bounds continuous torque
 scripts/
-  fetch_reference.py  pinned, checksummed fetch of large artifacts
+  fetch_reference.py    pinned, checksummed fetch of large artifacts
+  measure_actuators.py  re-derive bolt geometry from vendor STEP
 spec/               engineering brief
 tests/              one case per spec requirement ID
 ```
+
+## Known limitations
+
+- **Effective density is the weakest number in the model.** A 40%-infill PA-CF
+  part is not ρ=1160, and `Material.printed()` is a crude shell-plus-core
+  estimate. It will dominate the inertia error budget. `Material.measured()`
+  overrides it from a weighed coupon; deriving it from slicer GCode is the
+  better long-term answer and is left as a seam rather than built.
+- Bench-only requirements (S2, S3, T1, V1, P3) have no hardware to run against
+  yet.
 
 ## Modelling with an AI assistant
 
