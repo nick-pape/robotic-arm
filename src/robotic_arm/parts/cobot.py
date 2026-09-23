@@ -296,3 +296,38 @@ def lofted_tube(
 def shell(outer: Part, inner: Part) -> Part:
     """Hollow a solid by subtracting a matching inner solid."""
     return outer - inner
+
+
+def boss_centre(frame, length: float, protrusion: float) -> np.ndarray:
+    """Centre of a parent boss, placed on the side the link's body is on.
+
+    Getting this wrong is easy and not obvious in the numbers. A boss is not
+    symmetric about its joint plane: it stands a little proud on the parent's
+    side and extends the rest of the way into its own link. Which way that is
+    depends on the sign of the parent axis, and the axes on this arm are not
+    consistently signed -- link2's points the opposite way to link3's, link4's
+    and link5's.
+
+    Writing the offset against the raw axis therefore placed link2's boss 31 mm
+    clear of its own joint, leaving a visible gap at the shoulder. Deriving the
+    direction from where the stock part's material actually sits removes the
+    chance of getting the sign wrong at all.
+    """
+    axis = np.asarray(frame.parent_axis, dtype=float)
+    # Which way along the axis the stock body lies. Fall back to +axis for a
+    # part whose centroid sits on the joint plane.
+    reach = float(np.asarray(frame.stock_centre, dtype=float) @ axis)
+    toward_body = axis * (1.0 if reach >= 0 else -1.0)
+    return toward_body * (length / 2 - protrusion)
+
+
+def boss_mount_face(frame, length: float, protrusion: float) -> np.ndarray:
+    """The outboard face of a parent boss, where its bolt circle sits.
+
+    That is the face that lands against the actuator output, so it is where the
+    mounting holes have to break through.
+    """
+    axis = np.asarray(frame.parent_axis, dtype=float)
+    reach = float(np.asarray(frame.stock_centre, dtype=float) @ axis)
+    toward_body = axis * (1.0 if reach >= 0 else -1.0)
+    return boss_centre(frame, length, protrusion) - toward_body * (length / 2)

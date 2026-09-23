@@ -30,6 +30,8 @@ from robotic_arm.parts.cobot import (
     CollisionCylinder,
     Drum,
     bolt_ring,
+    boss_centre,
+    boss_mount_face,
     break_edges,
     lofted_tube,
     mount_boss_diameter,
@@ -94,7 +96,7 @@ def _drums() -> tuple[Drum, Drum]:
     parent_circle, _ = _mount_circles()
 
     parent = Drum(
-        centre=np.array([0.0, 0.0, PARENT_PROTRUSION - PARENT_LENGTH / 2]),
+        centre=boss_centre(frame, PARENT_LENGTH, PARENT_PROTRUSION),
         axis=frame.parent_axis,
         diameter=mount_boss_diameter(
             parent_circle.bcd, RULES.m3_clearance, floor=BOSS_DIAMETER
@@ -160,7 +162,7 @@ def build_forearm() -> Part:
 
     parent_circle, child_circle = _mount_circles()
     part -= bolt_ring(
-        centre=np.array([0.0, 0.0, PARENT_PROTRUSION - PARENT_LENGTH]),
+        centre=boss_mount_face(frame, PARENT_LENGTH, PARENT_PROTRUSION),
         axis=parent.axis,
         bcd=parent_circle.bcd,
         count=parent_circle.count,

@@ -133,3 +133,37 @@ def test_whole_printed_assembly_saves_mass():
         total_new += mass_properties(solid, effective_material(solid, material)).mass
     total_stock = sum(stock_mass(body) for body in REGISTRY)
     assert total_new < total_stock * 0.4
+
+
+def test_parent_boss_sits_on_the_body_side_of_its_joint(part_case):
+    """A boss must overlap the space its own stock part occupies.
+
+    Parent axes on this arm are not consistently signed -- link2's points the
+    opposite way to link3's, link4's and link5's -- so writing a boss offset
+    against the raw axis places it on the wrong side for some links. That put
+    link2's shoulder boss 31 mm clear of its own joint and left a visible gap
+    in the render, while every number the suite checked stayed plausible.
+    """
+    body, _, _ = part_case
+    if not _is_shell_built(body):
+        pytest.skip("solid part has no parent boss")
+
+    import importlib
+
+    module = importlib.import_module(REGISTRY[body][0].__module__)
+    parent, _ = module._drums()
+    frame = link_frame(body)
+
+    axis = frame.parent_axis
+    boss_at = float(parent.centre @ axis)
+    half = parent.length / 2
+    stock_at = float(frame.stock_centre @ axis)
+    stock_half = float(abs(frame.stock_extent @ axis)) / 2
+
+    overlap = min(boss_at + half, stock_at + stock_half) - max(
+        boss_at - half, stock_at - stock_half
+    )
+    assert overlap > 0.6 * parent.length, (
+        f"{body} boss spans {boss_at - half:+.0f}..{boss_at + half:+.0f} along its "
+        f"axis but stock spans {stock_at - stock_half:+.0f}..{stock_at + stock_half:+.0f}"
+    )
