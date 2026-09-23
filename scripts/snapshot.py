@@ -61,7 +61,9 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--balancer", action="store_true")
     parser.add_argument(
-        "--focus", default="", help="body name to add close-up views of"
+        "--focus",
+        default="",
+        help="comma-separated body names to add close-up views of",
     )
     parser.add_argument("--width", type=int, default=1000)
     parser.add_argument("--height", type=int, default=750)
@@ -96,16 +98,16 @@ def main() -> None:
                 Image.fromarray(renderer.render()).save(path)
                 written.append(path)
 
-            if args.focus:
-                bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, args.focus)
+            for focus in [f.strip() for f in args.focus.split(",") if f.strip()]:
+                bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, focus)
                 if bid < 0:
-                    raise SystemExit(f"no body named {args.focus!r}")
+                    raise SystemExit(f"no body named {focus!r}")
                 for angle_key, (azimuth, elevation) in DETAIL_ANGLES.items():
                     camera.distance = 0.22
                     camera.azimuth, camera.elevation = azimuth, elevation
                     camera.lookat[:] = data.xpos[bid]
                     renderer.update_scene(data, camera=camera, scene_option=options)
-                    path = args.out / f"{args.focus}_{pose_key}_{angle_key}.png"
+                    path = args.out / f"{focus}_{pose_key}_{angle_key}.png"
                     Image.fromarray(renderer.render()).save(path)
                     written.append(path)
 
