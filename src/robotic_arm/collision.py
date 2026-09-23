@@ -240,3 +240,79 @@ def compare_clearance(
         twin.geom_margin[:] = twin_margin
 
     return ClearanceComparison(samples, regressions, worst_stock, worst_twin)
+
+
+def adjacent_pair_clearance(
+    model: mujoco.MjModel, a: str, b: str, qpos: np.ndarray
+) -> float:
+    """Closest approach between two named bodies, in mm, ignoring exclusions.
+
+    `closest_approaches` deliberately honours MuJoCo's contact filtering, which
+    excludes parent/child pairs and the upstream exclude list. That is correct
+    for simulating the stock arm, and blind for validating newly designed joint
+    seams: link2/link3, link3/link4 and link4/link5 are all on that list, so no
+    amount of sweeping would ever have reported them touching.
+
+    This queries the geometry directly instead, so a printed seam can be
+    checked whatever the simulation chooses to ignore.
+    """
+    data = mujoco.MjData(model)
+    data.qpos[: len(qpos)] = qpos
+    mujoco.mj_forward(model, data)
+
+    ids = {}
+    for name in (a, b):
+        bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
+        if bid < 0:
+            raise KeyError(name)
+        ids[name] = [
+            g
+            for g in range(model.ngeom)
+            if model.geom_bodyid[g] == bid and model.geom_group[g] == 3
+        ]
+    if not ids[a] or not ids[b]:
+        return float("inf")
+
+    return min(
+        mujoco.mj_geomDistance(model, data, ga, gb, 1.0, None)
+        for ga in ids[a]
+        for gb in ids[b]
+    ) * 1e3
+
+
+def adjacent_seam_parity(
+    stock: mujoco.MjModel,
+    twin: mujoco.MjModel,
+    pairs: tuple[tuple[str, str], ...] = (
+        ("link2", "link3"),
+        ("link3", "link4"),
+        ("link4", "link5"),
+        ("link5", "link6"),
+    ),
+    samples: int = 500,
+    seed: int = 0,
+) -> dict[tuple[str, str], tuple[float, float]]:
+    """Worst approach per adjacent pair, stock vs twin, over the same poses.
+
+    Reported as parity because absolute overlap is the wrong test: the stock
+    arm's own link2 and link3 interpenetrate by 16 mm at the folded limit, so
+    "do they overlap" answers yes for the shipping product too. What matters is
+    whether the printed seam is worse than the one it replaces.
+    """
+    rng = np.random.default_rng(seed)
+    joint_ids = [
+        mujoco.mj_name2id(stock, mujoco.mjtObj.mjOBJ_JOINT, name)
+        for name in ARM_JOINTS
+    ]
+    ranges = np.array([stock.jnt_range[j] for j in joint_ids])
+
+    worst = {pair: (float("inf"), float("inf")) for pair in pairs}
+    for _ in range(samples):
+        qpos = np.zeros(stock.nq)
+        qpos[: len(joint_ids)] = rng.uniform(ranges[:, 0], ranges[:, 1])
+        for pair in pairs:
+            s = adjacent_pair_clearance(stock, *pair, qpos)
+            t = adjacent_pair_clearance(twin, *pair, qpos)
+            best_s, best_t = worst[pair]
+            worst[pair] = (min(best_s, s), min(best_t, t))
+    return worst

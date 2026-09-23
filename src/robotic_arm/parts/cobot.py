@@ -354,7 +354,11 @@ def housing_over(frame, motor_centre: np.ndarray, motor_length: float) -> Drum:
     motor_at = float(motor_centre @ axis)
     child_at = float(child @ axis)
     low = min(motor_at - motor_length / 2, child_at)
-    high = max(motor_at + motor_length / 2, child_at)
+    # Stop at the joint plane. Beyond it is the child link's space, and at a
+    # rotating joint the two halves need a running clearance, not shared
+    # volume. Letting the housing run past cost ~800 mm3 of overlap per joint;
+    # the motor itself may protrude, since it is exposed anyway.
+    high = child_at - STYLE.joint_gap / 2
 
     # Perpendicular position follows the motor; only the along-axis extent
     # is stretched to reach the mount face.
@@ -365,3 +369,70 @@ def housing_over(frame, motor_centre: np.ndarray, motor_length: float) -> Drum:
         diameter=0.0,  # caller fills this in; only placement is decided here
         length=high - low,
     )
+
+
+def mount_face_ring(drum: Drum, towards: np.ndarray, circle, hole_diameter: float,
+                    depth: float) -> Part:
+    """Bolt holes cut into whichever face of `drum` points at `towards`.
+
+    Derived from the drum's actual geometry rather than from a constant
+    offset. Every child bolt ring in this project was placed as
+    `child_origin + axis * CHILD_LENGTH/2` using the nominal constant, while
+    the housing had since been repositioned onto its motor -- so the rings sat
+    26-27 mm off the face and removed no material at all.
+    """
+    axis = np.asarray(drum.axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+    towards = np.asarray(towards, dtype=float)
+
+    face_a = np.asarray(drum.centre, float) - axis * drum.length / 2
+    face_b = np.asarray(drum.centre, float) + axis * drum.length / 2
+    face = face_a if np.linalg.norm(towards - face_a) < np.linalg.norm(towards - face_b) else face_b
+    # Cut inwards from that face.
+    inward = 1.0 if np.dot(np.asarray(drum.centre, float) - face, axis) > 0 else -1.0
+
+    return bolt_ring(
+        centre=face + axis * inward * depth / 2,
+        axis=axis,
+        bcd=circle.bcd,
+        count=circle.count,
+        hole_diameter=hole_diameter,
+        depth=depth,
+    )
+
+
+def cable_channel(start: np.ndarray, end: np.ndarray, diameter: float) -> Part:
+    """A side channel for the harness, as a solid to subtract.
+
+    Neither actuator is a hollow-shaft motor -- the RS06 and RS00 STEP files
+    show only a O4 central feature -- so there is no route through the middle.
+    A central bore in a printed boss implies a passage that does not exist, and
+    on link2 and link3 it also ate into the bolt circle, leaving -2.7 mm and
+    -1.7 mm of material. Cable therefore runs beside the actuator, which is
+    what the stock arm does with its clipped XT30 daisy chain.
+    """
+    return tube(start, end, diameter)
+
+
+def mating_face_opening(
+    drum: Drum, towards: np.ndarray, diameter: float, depth: float | None = None
+) -> Part:
+    """An opening cut through a housing's mating face, as a solid to subtract.
+
+    The face a child link bolts to cannot be closed: the actuator output and
+    the child's own boss come through it. Shelling a drum leaves both ends
+    capped, so this reopens the one that matters.
+    """
+    axis = np.asarray(drum.axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+    centre = np.asarray(drum.centre, dtype=float)
+    towards = np.asarray(towards, dtype=float)
+
+    face_a = centre - axis * drum.length / 2
+    face_b = centre + axis * drum.length / 2
+    outward = axis if np.linalg.norm(towards - face_b) < np.linalg.norm(towards - face_a) else -axis
+    face = face_b if np.allclose(outward, axis) else face_a
+
+    depth = (RULES.structural_wall_thickness * 3) if depth is None else depth
+    # Start just inside the shell and cut outward through the cap.
+    return _oriented_cylinder(face + outward * (depth / 2 - depth), outward, diameter / 2, depth * 2)

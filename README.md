@@ -170,18 +170,35 @@ that the passing suite did not. Verified and fixed so far:
 - The balancer was still sized for stock's 15.36 N*m self-weight. Re-optimised
   for the lighter twin: 6.5 N*m cancellation, 6.90 N*m residual.
 
+Also fixed:
+
+- **Cable bores swallowed the bolt circles** (-2.69 mm of material on link2).
+  Both actuators turn out not to be hollow-shaft motors -- their STEP files
+  show only a O4 central feature -- so a through-bore implied a cable route
+  that does not exist. Removed; the harness now runs beside the actuator in a
+  side channel, as the stock arm's clipped XT30 daisy chain does.
+- **Mounting cuts removed 0 mm3.** They were placed from constants while the
+  housings had since been moved onto their motors. Now derived from the
+  drums' actual faces; they remove ~112 mm3 each.
+- **Housing mating faces were capped**, so the child link's boss punched
+  through them. Opened to clear the child's boss plus a running gap.
+
 Still open, and blocking fabrication:
 
-- **Adjacent printed shells intersect** — up to 2,289 mm3 between link2 and
-  link3 in the zero pose. The clearance sweep cannot see it: those pairs are in
-  the upstream MJCF's contact exclusion list.
-- **Cable bores swallow the bolt circles.** link2 leaves -2.69 mm of material
-  between bolt hole and bore, link3 -1.69 mm.
-- **Several mounting cuts remove 0 mm3** -- they are placed from the old
-  housing offsets and miss the part entirely.
+- **Printed seams are worse than the stock ones they replace** -- link2/link3
+  by 36 mm, link3/link4 by 32 mm, link4/link5 by 14 mm. Note that *both* arms
+  interpenetrate at folded joint limits (stock's link2/link3 by 16 mm), so
+  this is a parity regression rather than overlap as such. The printed drums
+  are round and fatter at the seams than stock's flat beams. Fixing it needs
+  slimmer seam geometry or reduced joint limits. Tracked as a strict xfail.
 - **Payload is applied at the gripper COM, 112.75 mm behind the tool origin**,
-  so the reported 5 kg understates the real J2 moment.
+  so the reported 5 kg understates the real J2 moment -- 38.2 N*m against a
+  36 N*m peak at one admitted pose.
+- **Motor meshes still intersect the shells** (40-52 sampled vertices per
+  link), and the vendor envelope disagrees with the stock motor assets.
 - No assembly sequence, bolt access, or cable route has been established.
+- `structure.py` does not establish P3: it is a per-link cantilever, while P3
+  is whole-arm TCP deflection.
 
 ## Known limitations
 

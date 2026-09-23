@@ -17,15 +17,18 @@ import numpy as np
 from build123d import Part
 
 from robotic_arm.actuators import RS00
-from robotic_arm.design import RULES
+from robotic_arm.design import RULES, STYLE
 from robotic_arm.linkframes import actuator_centre, link_frame
 from robotic_arm.materials import PC_CF
 from robotic_arm.parts.cobot import (
     CollisionCylinder,
     Drum,
     bolt_ring,
+    cable_channel,
     boss_centre,
     housing_over,
+    mating_face_opening,
+    mount_face_ring,
     boss_mount_face,
     break_edges,
     mount_boss_diameter,
@@ -47,7 +50,7 @@ PARENT_LENGTH = 48.0
 #: Stock reaches z = +12.5 mm here. A drum centred on the joint plane would
 #: reach +27 and foul link2 and the base through part of the workspace -- the
 #: clearance sweep caught exactly that.
-PARENT_PROTRUSION = 10.0
+PARENT_PROTRUSION = -STYLE.joint_gap / 2
 
 #: J5 drum, enclosing the actuator that drives link5.
 #: Boss diameter, set for proportion rather than strength: it keeps the
@@ -62,7 +65,7 @@ CHILD_LENGTH = 56.0
 #: to carry the bending load of the wrist hanging off the end.
 TUBE_DIAMETER = 52.0
 
-BORE_DIAMETER = 22.0
+CABLE_CHANNEL_DIAMETER = 12.0
 
 
 def child_diameter() -> float:
@@ -125,6 +128,23 @@ def collision_primitives() -> list[CollisionCylinder]:
     ]
 
 
+def _channel_offset(drum: Drum) -> np.ndarray:
+    """Radial offset putting the cable channel beside a drum -- clear of its
+    bolt circle and inside its outer wall."""
+    axis = np.asarray(drum.axis, dtype=float)
+    seed = np.array([0.0, 0.0, 1.0])
+    if abs(float(seed @ axis)) > 0.9:
+        seed = np.array([1.0, 0.0, 0.0])
+    radial = np.cross(axis, seed)
+    radial /= np.linalg.norm(radial)
+    return radial * (
+        drum.diameter / 2
+        - RULES.structural_wall_thickness
+        - CABLE_CHANNEL_DIAMETER / 2
+        - 1.0
+    )
+
+
 def build_wrist_pitch() -> Part:
     """Return the forearm-to-wrist link as a solid, in link4's frame."""
     frame = link_frame(BODY)
@@ -132,10 +152,15 @@ def build_wrist_pitch() -> Part:
 
     part = shelled_body(parent, child, TUBE_DIAMETER)
 
-    # Cable route down the J4 axis.
-    part -= Drum(
-        centre=parent.centre, axis=parent.axis, diameter=BORE_DIAMETER, length=200.0
-    ).solid()
+    # No central bore: neither actuator is a hollow-shaft motor, so a
+    # through-bore here would imply a cable route that does not exist --
+    # and on link2 and link3 it cut into the mounting bolt circle.
+    # The harness runs beside the actuator instead.
+    part -= cable_channel(
+        parent.centre + _channel_offset(parent),
+        child.centre + _channel_offset(child),
+        CABLE_CHANNEL_DIAMETER,
+    )
 
     mount = RS00().output_circle
 
@@ -158,8 +183,19 @@ def build_wrist_pitch() -> Part:
         depth=30.0,
     )
 
-    part -= seam_groove(parent, offset_along_axis=-PARENT_LENGTH / 2 + 5.0)
-    part -= seam_groove(child, offset_along_axis=CHILD_LENGTH / 2 - 5.0)
+    # Open the mating face. The child link's boss enters here, as does the
+    # actuator output; a shelled drum caps both ends, and the closed cap is
+    # what the child boss was punching through.
+    from robotic_arm.parts import child_interface_diameter
+
+    opening = child_interface_diameter(BODY)
+    if opening is not None:
+        part -= mating_face_opening(
+            child, towards=frame.child_origin, diameter=opening + 2 * STYLE.joint_gap
+        )
+
+    part -= seam_groove(parent, offset_along_axis=-parent.length / 2 + 5.0)
+    part -= seam_groove(child, offset_along_axis=child.length / 2 - 5.0)
 
     return break_edges(part)
 

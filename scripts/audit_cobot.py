@@ -54,10 +54,14 @@ def uncut_shell(module):
             parent, child, module.TUBE_DIAMETER,
             tube_from=6.0 if module.BODY == "link5" else 0.0,
         )
+    # The central bore has been removed: neither actuator is a hollow-shaft
+    # motor, so it implied a cable route that does not exist. Parts that still
+    # declare one keep the old behaviour.
+    bore = getattr(module, "BORE_DIAMETER", None)
+    if bore is None:
+        return shape
     bore_length = {"link2": 140.0, "link3": 120.0}.get(module.BODY, 200.0)
-    return shape - Drum(
-        parent.centre, parent.axis, module.BORE_DIAMETER, bore_length
-    ).solid()
+    return shape - Drum(parent.centre, parent.axis, bore, bore_length).solid()
 
 
 def geometry_measurements():
@@ -98,10 +102,13 @@ def geometry_measurements():
                 "removed_mm3": intersection_volume(blank, cutter),
             })
             blank = blank - cutter
+        bore = getattr(module, "BORE_DIAMETER", None)
         record["bore_to_parent_hole_ligament_mm"] = (
-            captured[0][0]["bcd"] / 2 - RULES.m3_clearance / 2
-            - module.BORE_DIAMETER / 2
+            None
+            if bore is None
+            else captured[0][0]["bcd"] / 2 - RULES.m3_clearance / 2 - bore / 2
         )
+        record["central_bore"] = bore
 
         # Check BOTH parent end faces. A cut through the wrong end is not a
         # usable connection at the joint-facing end of the housing.

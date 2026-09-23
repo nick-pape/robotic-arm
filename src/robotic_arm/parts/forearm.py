@@ -23,18 +23,21 @@ import numpy as np
 from build123d import Part
 
 from robotic_arm.actuators import RS00, RS06
-from robotic_arm.design import RULES
+from robotic_arm.design import RULES, STYLE
 from robotic_arm.linkframes import actuator_centre, link_frame
 from robotic_arm.materials import PC_CF
 from robotic_arm.parts.cobot import (
     CollisionCylinder,
     Drum,
     bolt_ring,
+    cable_channel,
     boss_centre,
     housing_over,
     boss_mount_face,
     break_edges,
     lofted_tube,
+    mating_face_opening,
+    mount_face_ring,
     mount_boss_diameter,
     seam_groove,
     shell,
@@ -46,7 +49,7 @@ BODY = "link3"
 #: J3 boss. Bolts to the RS06 output; stock leaves room for a full drum of
 #: about O40 here, so the mount boss fits with margin.
 PARENT_LENGTH = 46.0
-PARENT_PROTRUSION = 9.0
+PARENT_PROTRUSION = -STYLE.joint_gap / 2
 
 #: J4 drum, housing the RS00 that drives the wrist.
 CHILD_CLEARANCE = 3.0
@@ -75,7 +78,7 @@ BOSS_DIAMETER = 60.0
 TUBE_STATIONS = (0.0, 0.5, 0.8, 0.95)
 TUBE_DIAMETERS = (56.0, 46.0, 50.0, 60.0)
 
-BORE_DIAMETER = 24.0
+CABLE_CHANNEL_DIAMETER = 12.0
 
 
 def child_diameter() -> float:
@@ -167,6 +170,23 @@ def collision_primitives() -> list[CollisionCylinder]:
     return proxies
 
 
+def _channel_offset(drum: Drum) -> np.ndarray:
+    """Radial offset putting the cable channel beside a drum -- clear of its
+    bolt circle and inside its outer wall."""
+    axis = np.asarray(drum.axis, dtype=float)
+    seed = np.array([0.0, 0.0, 1.0])
+    if abs(float(seed @ axis)) > 0.9:
+        seed = np.array([1.0, 0.0, 0.0])
+    radial = np.cross(axis, seed)
+    radial /= np.linalg.norm(radial)
+    return radial * (
+        drum.diameter / 2
+        - RULES.structural_wall_thickness
+        - CABLE_CHANNEL_DIAMETER / 2
+        - 1.0
+    )
+
+
 def build_forearm() -> Part:
     """Return the forearm as a solid, in link3's frame."""
     frame = link_frame(BODY)
@@ -182,31 +202,39 @@ def build_forearm() -> Part:
     )
     part = shell(outer, inner)
 
-    # Cable route through the J3 boss, into the hollow tube.
-    part -= Drum(
-        centre=parent.centre, axis=parent.axis, diameter=BORE_DIAMETER, length=120.0
-    ).solid()
+    # No central bore: neither actuator is a hollow-shaft motor, so a
+    # through-bore here would imply a cable route that does not exist --
+    # and on link2 and link3 it cut into the mounting bolt circle.
+    # The harness runs beside the actuator instead.
+    part -= cable_channel(
+        parent.centre + _channel_offset(parent),
+        child.centre + _channel_offset(child),
+        CABLE_CHANNEL_DIAMETER,
+    )
 
     parent_circle, child_circle = _mount_circles()
-    part -= bolt_ring(
-        centre=boss_mount_face(frame, PARENT_LENGTH, PARENT_PROTRUSION),
-        axis=parent.axis,
-        bcd=parent_circle.bcd,
-        count=parent_circle.count,
-        hole_diameter=RULES.m3_clearance,
-        depth=40.0,
+    part -= mount_face_ring(
+        parent, towards=-parent.axis * 1000.0, circle=parent_circle,
+        hole_diameter=RULES.m3_clearance, depth=RULES.structural_wall_thickness * 3,
     )
-    part -= bolt_ring(
-        centre=frame.child_origin + frame.child_axis * (CHILD_LENGTH / 2),
-        axis=child.axis,
-        bcd=child_circle.bcd,
-        count=child_circle.count,
-        hole_diameter=RULES.m3_clearance,
-        depth=40.0,
+    part -= mount_face_ring(
+        child, towards=frame.child_origin, circle=child_circle,
+        hole_diameter=RULES.m3_clearance, depth=RULES.structural_wall_thickness * 3,
     )
 
-    part -= seam_groove(parent, offset_along_axis=-PARENT_LENGTH / 2 + 5.0)
-    part -= seam_groove(child, offset_along_axis=CHILD_LENGTH / 2 - 5.0)
+    # Open the mating face. The child link's boss enters here, as does the
+    # actuator output; a shelled drum caps both ends, and the closed cap is
+    # what the child boss was punching through.
+    from robotic_arm.parts import child_interface_diameter
+
+    opening = child_interface_diameter(BODY)
+    if opening is not None:
+        part -= mating_face_opening(
+            child, towards=frame.child_origin, diameter=opening + 2 * STYLE.joint_gap
+        )
+
+    part -= seam_groove(parent, offset_along_axis=-parent.length / 2 + 5.0)
+    part -= seam_groove(child, offset_along_axis=child.length / 2 - 5.0)
 
     return break_edges(part)
 

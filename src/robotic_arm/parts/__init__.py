@@ -112,3 +112,29 @@ def actuator_mass_properties(body: str):
     # Pick a density that reproduces the published mass on this envelope.
     density = actuator.mass_kg / (body_solid.volume * 1e-9)
     return mass_properties(body_solid, Material(actuator.name, density))
+
+
+def child_interface_diameter(body: str) -> float | None:
+    """Outer diameter of whatever the child link presents at this joint.
+
+    A parent's housing has to open far enough for the child's own mounting
+    boss to enter it. Without that opening the housing's end cap and the
+    child's boss occupy the same volume -- which is most of the 2,289 mm3 of
+    printed-material overlap the design review measured between link2 and
+    link3. They cannot both be there.
+    """
+    import importlib
+
+    from robotic_arm.linkframes import link_frame
+
+    child = link_frame(body).child_name
+    if child is None or child not in REGISTRY:
+        return None
+
+    module = importlib.import_module(REGISTRY[child][0].__module__)
+    drums = getattr(module, "_drums", None)
+    if drums is not None:
+        parent, _ = drums()
+        return float(parent.diameter)
+    # A child with no boss presents its own outer body, like the tool flange.
+    return float(getattr(module, "OUTER_DIAMETER", 0.0)) or None
