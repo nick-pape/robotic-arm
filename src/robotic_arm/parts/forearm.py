@@ -86,9 +86,7 @@ def child_diameter() -> float:
 
 def _mount_circles():
     """(J3 output circle on the RS06, J4 mount circle on the RS00)."""
-    rs06 = {round(c.bcd, 2): c for c in RS06().bolt_circles}
-    rs00 = {round(c.bcd, 2): c for c in RS00().bolt_circles}
-    return rs06[24.02], rs00[27.0]
+    return RS06().output_circle, RS00().output_circle
 
 
 def _drums() -> tuple[Drum, Drum]:

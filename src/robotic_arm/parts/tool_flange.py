@@ -147,8 +147,7 @@ def _motor_mount_circle():
     The six-hole circle at O27, which the vendor STEP confirms and which is the
     one published figure for this actuator that is actually correct.
     """
-    circles = {round(c.bcd, 2): c for c in RS00().bolt_circles}
-    return circles[27.0]
+    return RS00().output_circle
 
 
 def interface_clearance() -> dict[str, float]:

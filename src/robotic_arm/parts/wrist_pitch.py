@@ -75,7 +75,7 @@ def _drums() -> tuple[Drum, Drum]:
     """The two joint drums. Shared by the solid and its collision proxy so the
     two cannot drift apart."""
     frame = link_frame(BODY)
-    mount = {round(c.bcd, 2): c for c in RS00().bolt_circles}[27.0]
+    mount = RS00().output_circle
     parent = Drum(
         centre=boss_centre(frame, PARENT_LENGTH, PARENT_PROTRUSION),
         axis=frame.parent_axis,
@@ -137,7 +137,7 @@ def build_wrist_pitch() -> Part:
         centre=parent.centre, axis=parent.axis, diameter=BORE_DIAMETER, length=200.0
     ).solid()
 
-    mount = {round(c.bcd, 2): c for c in RS00().bolt_circles}[27.0]
+    mount = RS00().output_circle
 
     # Onto the J4 actuator output.
     part -= bolt_ring(

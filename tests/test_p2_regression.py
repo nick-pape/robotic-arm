@@ -22,8 +22,8 @@ the change they guard, not measurements of work already done.
 import pytest
 
 from robotic_arm.actuators import RS06
-from robotic_arm.balancer import Balancer, residual_torque
-from robotic_arm.mjcf import generate, load
+from robotic_arm.balancer import DEFAULT_CANCEL_NM, Balancer, residual_torque
+from robotic_arm.mjcf import generate, generate_twin, load
 from robotic_arm.torque import max_moment_arm, max_payload, worst_case_j2
 
 #: How much worse than stock the clone may be before it counts as a regression.
@@ -42,16 +42,19 @@ def stock(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def clone(tmp_path_factory):
-    """The clone as currently defined.
+    """The clone as actually built: printed parts plus the J2 balancer.
 
-    No printed parts are committed yet, so this is the stock model plus the J2
-    balancer. As CAD lands it gains inertial overrides and these tests start
-    doing real work.
+    This used `generate()` rather than `generate_twin()`, dating from when no
+    parts existed. Five were registered afterwards and the fixture was never
+    updated, so every P2 check here ran against the stock model and passed
+    without touching the printed design at all -- the exact regression these
+    tests exist to catch.
     """
     return load(
-        generate(
+        generate_twin(
             out=tmp_path_factory.mktemp("clone") / "model.xml",
-            balancer=Balancer.sized_for(8.25),
+            balancer=Balancer.sized_for(DEFAULT_CANCEL_NM),
+            visuals=False,
         )
     )
 

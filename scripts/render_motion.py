@@ -21,7 +21,7 @@ import mujoco
 import numpy as np
 from PIL import Image
 
-from robotic_arm.balancer import Balancer
+from robotic_arm.balancer import DEFAULT_CANCEL_NM, Balancer
 from robotic_arm.mjcf import generate_scene, generate_twin, load
 from robotic_arm.motion import trajectory
 
@@ -38,7 +38,7 @@ def render(
     fps: int,
     colors: int,
 ) -> Path:
-    balancer = Balancer.sized_for(8.25) if use_balancer else None
+    balancer = Balancer.sized_for(DEFAULT_CANCEL_NM) if use_balancer else None
     model_path = generate_twin(out=REPO / "sim" / "render_model.xml", balancer=balancer)
     model = load(generate_scene(model_path))
     data = mujoco.MjData(model)

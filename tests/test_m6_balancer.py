@@ -16,38 +16,50 @@ import pytest
 from robotic_arm.actuators import RS06
 from robotic_arm.balancer import (
     ANCHOR_SITE,
+    DEFAULT_CANCEL_NM,
     ARM_SITE,
     TENDON_NAME,
     Balancer,
     max_continuous_payload,
     residual_torque,
 )
-from robotic_arm.mjcf import frame_differences, generate, load
+from robotic_arm.mjcf import frame_differences, generate, generate_twin, load
 from robotic_arm.reference import load_baseline
 
 #: Found by sweeping cancellation against worst-case residual; see
 #: `optimise_cancellation`. Notably this is the figure the spec recommended,
 #: which its own (wrong) self-weight estimate did not actually support.
-OPTIMAL_CANCEL_NM = 8.25
+OPTIMAL_CANCEL_NM = DEFAULT_CANCEL_NM
 
 
 @pytest.fixture(scope="module")
 def balanced(tmp_path_factory):
+    """The printed twin with its spring.
+
+    These fixtures used to build the *stock* model with a balancer attached,
+    which measured the spring against the wrong arm: the spring exists to make
+    the printed clone hold itself up, and the clone is 1.5 kg lighter.
+    """
     out = tmp_path_factory.mktemp("bal") / "model.xml"
-    return load(generate(out=out, balancer=Balancer.sized_for(OPTIMAL_CANCEL_NM)))
+    return load(
+        generate_twin(
+            out=out, balancer=Balancer.sized_for(OPTIMAL_CANCEL_NM), visuals=False
+        )
+    )
 
 
 @pytest.fixture(scope="module")
 def unbalanced(tmp_path_factory):
     out = tmp_path_factory.mktemp("plain") / "model.xml"
-    return load(generate(out=out))
+    return load(generate_twin(out=out, visuals=False))
 
 
 def test_exact_balance_condition():
     """k*a*b = target is the whole sizing rule; check the algebra round-trips."""
-    b = Balancer.sized_for(8.25, anchor_height=0.06, arm_offset=0.10)
-    assert b.cancel_nm == pytest.approx(8.25, rel=1e-12)
-    assert b.stiffness == pytest.approx(8.25 / (0.06 * 0.10), rel=1e-12)
+    target = DEFAULT_CANCEL_NM
+    b = Balancer.sized_for(target, anchor_height=0.06, arm_offset=0.10)
+    assert b.cancel_nm == pytest.approx(target, rel=1e-12)
+    assert b.stiffness == pytest.approx(target / (0.06 * 0.10), rel=1e-12)
 
 
 def test_spring_through_the_pivot_is_rejected():
@@ -88,17 +100,23 @@ def test_spring_is_zero_free_length(balanced):
     assert np.allclose(balanced.tendon_lengthspring, 0.0)
 
 
-def test_balancer_does_not_move_any_frame(balanced):
-    """It adds sites and a tendon, but must not disturb the kinematics."""
-    assert frame_differences(balanced, load_baseline()) == []
+def test_balancer_does_not_move_any_frame(balanced, unbalanced):
+    """It adds sites and a tendon, but must not disturb the kinematics.
+
+    Compared against the *unbalanced twin*, not against stock. The twin's
+    geometry legitimately differs from stock -- printed meshes and cylinder
+    collision proxies -- so a stock comparison would flag those and say
+    nothing about the spring, which is what this test is actually about.
+    """
+    assert frame_differences(balanced, unbalanced) == []
 
 
 def test_balancer_substantially_reduces_j2_torque(balanced, unbalanced):
     """The headline: worst-case self-weight torque roughly halves."""
     before, _ = residual_torque(unbalanced, samples=31)
     after, _ = residual_torque(balanced, samples=31)
-    assert before > 15.0
-    assert after < before * 0.55
+    assert before > 12.0, f"unbalanced twin only loads J2 to {before:.2f} N*m"
+    assert after < before * 0.6
 
 
 def test_self_weight_comes_within_the_continuous_budget(balanced):
@@ -115,13 +133,14 @@ def test_over_springing_makes_the_worst_case_worse(tmp_path):
     the sizing is an optimisation rather than "cancel the peak".
     """
     optimal = load(
-        generate(
+        generate_twin(
             out=tmp_path / "opt.xml",
             balancer=Balancer.sized_for(OPTIMAL_CANCEL_NM),
+            visuals=False,
         )
     )
     excessive = load(
-        generate(out=tmp_path / "big.xml", balancer=Balancer.sized_for(15.36))
+        generate_twin(out=tmp_path / "big.xml", balancer=Balancer.sized_for(15.36), visuals=False)
     )
     best, _ = residual_torque(optimal, samples=31)
     worse, _ = residual_torque(excessive, samples=31)

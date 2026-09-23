@@ -36,14 +36,17 @@ is the architecture, not a convention:
   pinned commit in `reference/` and never edited;
 - **inertial properties** come from our build123d CAD.
 
-`mjcf.generate()` cannot violate this, because it has no code path that writes
-anything but inertials — and `frame_differences()` proves it afterwards rather
-than assuming it.
+`mjcf.generate()` writes only inertials, and `frame_differences()` checks that
+afterwards. Note that `generate_twin()` deliberately goes further: it also
+swaps visual meshes and collision geometry, so it is *not* a frames-only
+transform and must not be compared against stock as though it were.
 
 ## Status
 
-Infrastructure is complete; no part designs are committed yet, pending design
-input.
+Five printed parts are designed (link2-link6); link1 and base_link are still
+stock. **The design is not fabricable yet** -- an independent review
+(`docs/cobot-design-review.md`) found reproducible assembly interferences and
+unusable mounting features. See "Known defects" below.
 
 | Milestone | State |
 |---|---|
@@ -55,7 +58,8 @@ input.
 | M5 CAD→MJCF generator | done — path proven end to end, F2 enforced |
 | M6 J2 balancer | done — sized by optimisation |
 | M7 thermal and current limits | done |
-| Part design | **next — needs design input** |
+| link2-link6 printed | designed; interfaces not yet buildable |
+| link1, base_link | not started |
 
 ## What the real inertials say
 
@@ -148,6 +152,36 @@ scripts/
 spec/               engineering brief
 tests/              one case per spec requirement ID
 ```
+
+## Known defects
+
+An independent review (`docs/cobot-design-review.md`, 2026-09-23) found faults
+that the passing suite did not. Verified and fixed so far:
+
+- RS06 bolt circles were selected by diameter alone, and it has **two** circles
+  at O24.02. The dict silently kept the three-hole one, so link2 and link3
+  generated three mounting holes where the actuator has six.
+- The RS00 torque constant was 0.36 N*m/Arms, unsourced and wrong by a factor
+  of four; the motor read as infeasible at its own rated torque. The
+  consistency test covered only the RS06, which is how it survived.
+- `test_p2_regression.py` built its "clone" with `generate()` rather than
+  `generate_twin()`, so every P2 check ran against the stock model. Pointed at
+  the real twin, P2c failed at 8.61 N*m against a 7.70 budget.
+- The balancer was still sized for stock's 15.36 N*m self-weight. Re-optimised
+  for the lighter twin: 6.5 N*m cancellation, 6.90 N*m residual.
+
+Still open, and blocking fabrication:
+
+- **Adjacent printed shells intersect** — up to 2,289 mm3 between link2 and
+  link3 in the zero pose. The clearance sweep cannot see it: those pairs are in
+  the upstream MJCF's contact exclusion list.
+- **Cable bores swallow the bolt circles.** link2 leaves -2.69 mm of material
+  between bolt hole and bore, link3 -1.69 mm.
+- **Several mounting cuts remove 0 mm3** -- they are placed from the old
+  housing offsets and miss the part entirely.
+- **Payload is applied at the gripper COM, 112.75 mm behind the tool origin**,
+  so the reported 5 kg understates the real J2 moment.
+- No assembly sequence, bolt access, or cable route has been established.
 
 ## Known limitations
 

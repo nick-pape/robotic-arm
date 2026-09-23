@@ -70,7 +70,7 @@ def _drums() -> tuple[Drum, Drum]:
     """The two joint drums. Shared by the solid and its collision proxy so the
     two cannot drift apart."""
     frame = link_frame(BODY)
-    mount = {round(c.bcd, 2): c for c in RS00().bolt_circles}[27.0]
+    mount = RS00().output_circle
     parent = Drum(
         centre=np.array([0.0, 0.0, PARENT_LENGTH / 2 - 8.0]),
         axis=frame.parent_axis,
@@ -133,7 +133,7 @@ def build_wrist_roll() -> Part:
     ).solid()
 
     # Mounting pattern onto the J5 actuator output, from measured geometry.
-    mount = {round(c.bcd, 2): c for c in RS00().bolt_circles}[27.0]
+    mount = RS00().output_circle
     part -= bolt_ring(
         centre=np.array([0.0, 0.0, -8.0]),
         axis=parent.axis,

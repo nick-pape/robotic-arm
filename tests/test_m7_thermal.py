@@ -25,13 +25,21 @@ from robotic_arm.thermal import (
 )
 
 
-def test_torque_constant_reproduces_published_rated_torque():
+@pytest.mark.parametrize("actuator", [RS06(), RS00()], ids=lambda a: a.name)
+def test_torque_constant_reproduces_published_rated_torque(actuator):
     """The strongest available check on the winding model: Kt and the rated
     current must independently reproduce the published rated torque.
+
+    Parametrised over both actuators. It previously covered only the RS06,
+    which let an unsourced RS00 constant that was wrong by a factor of four
+    sit in the table unnoticed -- it reported the motor as infeasible at its
+    own rated torque.
     """
-    rs06 = RS06()
-    implied = rs06.rated_current_apk / math.sqrt(2) * 1.09
-    assert implied == pytest.approx(rs06.rated_nm, rel=0.01)
+    from robotic_arm.thermal import WINDINGS
+
+    kt = WINDINGS[actuator.name].torque_constant
+    implied = actuator.rated_current_apk / math.sqrt(2) * kt
+    assert implied == pytest.approx(actuator.rated_nm, rel=0.05)
 
 
 def test_copper_loss_at_rated_matches_the_spec_estimate():

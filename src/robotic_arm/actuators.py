@@ -126,6 +126,33 @@ class Actuator:
         """
         return self.rated_nm * factor
 
+    def circle(self, bcd: float, count: int) -> BoltCircle:
+        """Select a bolt circle by diameter *and* hole count.
+
+        Diameter alone is not a key. The RS06 has two distinct circles at
+        O24.02 -- six O3.3 holes on its output face and three O2.5 on the
+        opposite face -- so a dict keyed on BCD silently keeps whichever came
+        last. That is what made link2 and link3 generate three mounting holes
+        where the actuator has six.
+        """
+        for circle in self.bolt_circles:
+            if abs(circle.bcd - bcd) < 0.05 and circle.count == count:
+                return circle
+        raise KeyError(
+            f"{self.name} has no {count}-hole circle at O{bcd}; it has "
+            + ", ".join(f"{c.count}xO{c.bcd:.2f}" for c in self.bolt_circles)
+        )
+
+    @property
+    def output_circle(self) -> BoltCircle:
+        """The circle a driven link bolts to on this actuator's output face."""
+        return self.circle(*_OUTPUT_CIRCLE[self.name])
+
+    @property
+    def housing_circle(self) -> BoltCircle:
+        """The circle this actuator's own housing is bolted down by."""
+        return self.circle(*_HOUSING_CIRCLE[self.name])
+
     def largest_circle(self) -> BoltCircle:
         """The mounting circle -- the widest, which carries the housing load."""
         if not self.bolt_circles:
@@ -135,6 +162,13 @@ class Actuator:
     def circles_on_face(self, axis_z: float) -> tuple[BoltCircle, ...]:
         """Circles drilled along a given direction (+1 or -1)."""
         return tuple(c for c in self.bolt_circles if c.axis_z == axis_z)
+
+
+#: (bcd, count) identifying each named interface. Kept as data rather than
+#: inferred, because "largest" and "smallest" are not reliable descriptions:
+#: the RS06's output and its opposite face share a diameter.
+_OUTPUT_CIRCLE = {"RS06": (24.02, 6), "RS00": (27.0, 6)}
+_HOUSING_CIRCLE = {"RS06": (82.0, 8), "RS00": (50.0, 6)}
 
 
 # Vendor ratings, from RobStride's published specification table.

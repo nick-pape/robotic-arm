@@ -53,7 +53,12 @@ class WindingSpec:
 
 WINDINGS = {
     "RS06": WindingSpec(torque_constant=1.09, line_resistance=0.23),
-    "RS00": WindingSpec(torque_constant=0.36, line_resistance=1.5),
+    # 1.48 per the vendor manual, and consistent with the motor's own rated
+    # point: 4.7 Apk / sqrt(2) x 1.48 = 4.9 N*m against a published 5 N*m.
+    # The previous 0.36 was unsourced and wrong by a factor of four, which
+    # made the RS00 read as "infeasible" at its own rated torque. It
+    # survived because the consistency test only covered the RS06.
+    "RS00": WindingSpec(torque_constant=1.48, line_resistance=1.5),
 }
 
 

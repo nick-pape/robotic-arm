@@ -20,7 +20,7 @@ import mujoco
 import numpy as np
 from PIL import Image
 
-from robotic_arm.balancer import Balancer
+from robotic_arm.balancer import DEFAULT_CANCEL_NM, Balancer
 from robotic_arm.mjcf import generate_scene, generate_twin, load
 from robotic_arm.motion import WAYPOINTS
 
@@ -69,7 +69,7 @@ def main() -> None:
     parser.add_argument("--height", type=int, default=750)
     args = parser.parse_args()
 
-    balancer = Balancer.sized_for(8.25) if args.balancer else None
+    balancer = Balancer.sized_for(DEFAULT_CANCEL_NM) if args.balancer else None
     model = load(
         generate_scene(
             generate_twin(out=REPO / "sim" / "snapshot_model.xml", balancer=balancer)

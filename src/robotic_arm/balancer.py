@@ -42,6 +42,19 @@ import numpy as np
 
 from robotic_arm.reference import ARM_JOINTS
 
+#: Cancellation the spring is sized for, N*m.
+#:
+#: Re-optimised against the PRINTED twin. The original 8.25 was found by
+#: sweeping the stock arm, whose self-weight is 15.36 N*m; the twin is lighter
+#: at 13.08, so that spring over-cancels and leaves 8.61 N*m at the worst pose
+#: -- past the 7.70 N*m continuous budget. 6.5 leaves 6.90.
+#:
+#: This is why it must live in one place. It was duplicated across three
+#: scripts and two test modules, so re-tuning the arm meant remembering all
+#: five, and the P2 test that should have caught the mismatch was pointed at
+#: the stock model instead.
+DEFAULT_CANCEL_NM = 6.5
+
 #: Sites added to the model by the balancer.
 ANCHOR_SITE = "j2_balancer_anchor"
 ARM_SITE = "j2_balancer_arm"
