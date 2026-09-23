@@ -27,6 +27,7 @@ import mujoco
 import numpy as np
 
 from robotic_arm.balancer import Balancer, add_to_spec
+from robotic_arm.design import PRINTED_RGBA
 from robotic_arm.massprops import MassProperties
 from robotic_arm.reference import BASELINE_MJCF, REFERENCE_DIR, require
 
@@ -299,7 +300,10 @@ def apply_visual_meshes(spec: mujoco.MjSpec, solids: Mapping[str, object]) -> mu
     MESH_DIR.mkdir(parents=True, exist_ok=True)
     for body_name, solid in solids.items():
         stl = MESH_DIR / f"{body_name}_printed.stl"
-        export_stl(solid, str(stl), tolerance=1e-3, angular_tolerance=0.1)
+        # 0.001 mm chord tolerance gave 25,000 faces for a plain disc, a
+        # megabyte per part, and shading artifacts on the dense tessellation.
+        # 0.05 mm is far below anything visible at render scale.
+        export_stl(solid, str(stl), tolerance=0.05, angular_tolerance=0.2)
 
         mesh_name = f"{body_name}_printed"
         # meshdir points at the reference assets, so reference ours relative to
@@ -311,6 +315,25 @@ def apply_visual_meshes(spec: mujoco.MjSpec, solids: Mapping[str, object]) -> mu
         visuals = [g for g in body.geoms if "_col_" not in (g.meshname or "")]
         if not visuals:
             raise ValueError(f"no visual geom found on {body_name!r}")
-        for geom in visuals:
-            geom.meshname = mesh_name
+
+        # Stock visual geoms carry a pos and quat, because their meshes were
+        # authored in their own frames. Ours are authored directly in the body
+        # frame -- the same frame the inertial is expressed in -- so those
+        # transforms must be cleared. Leaving them would rotate the rendered
+        # part away from the inertia tensor we computed for it, and the picture
+        # would silently disagree with the physics.
+        first, *extra = visuals
+        first.meshname = mesh_name
+        first.pos = np.zeros(3)
+        first.quat = np.array([1.0, 0.0, 0.0, 0.0])
+        first.material = ""  # drop the stock material so rgba takes effect
+        first.rgba = np.array(PRINTED_RGBA, dtype=float)
+
+        # A stock link may carry several visual meshes (structure, motor,
+        # cover). One printed solid replaces the lot, so the spares are
+        # deleted. Hiding them in an undrawn group is not enough: the
+        # offscreen renderer draws every group, and two coincident meshes
+        # z-fight into a mess of streaks.
+        for geom in extra:
+            spec.delete(geom)
     return spec

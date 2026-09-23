@@ -95,6 +95,12 @@ class Style:
 RULES = PrintRules()
 STYLE = Style()
 
+#: Finish for printed parts in the render. A light neutral, close to the
+#: brushed-aluminium look the form language borrows from, and deliberately
+#: distinct from the stock black so it is obvious at a glance which parts have
+#: been replaced -- which is the whole point of re-rendering after a change.
+PRINTED_RGBA = (0.82, 0.83, 0.85, 1.0)
+
 
 #: Material assignment. PC-CF is the default for anything structural: stiff,
 #: HDT well above the 60-80 C an actuator housing reaches, and it prints
