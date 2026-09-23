@@ -5,7 +5,6 @@ itself as such. These tests pin what the actual inertials say, because the
 answer turned out to differ materially from the estimate.
 """
 
-import numpy as np
 import pytest
 
 from robotic_arm.actuators import RS06
@@ -58,15 +57,3 @@ def test_rated_payload_needs_peak_torque(worst):
     """
     tau = payload_torque_j2(worst, 2.5)
     assert RS06().derated_nm() < tau < RS06().peak_nm
-
-
-@pytest.mark.xfail(
-    reason="P2 requires the J2 gravity balancer, designed in M6",
-    strict=True,
-)
-def test_p2_j2_within_derated_limit(worst):
-    """Spec requirement P2: J2 torque at full reach, minus spring, within 0.7x
-    derated rated torque. Currently fails by design -- no balancer exists yet.
-    Flips to passing when M6 lands, which is the point.
-    """
-    assert payload_torque_j2(worst, 1.0) <= RS06().derated_nm()

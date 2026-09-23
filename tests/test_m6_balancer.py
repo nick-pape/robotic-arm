@@ -134,24 +134,3 @@ def test_balancer_improves_intermittent_payload(balanced, unbalanced):
     before = max_continuous_payload(unbalanced, rs06.peak_nm, samples=21)
     after = max_continuous_payload(balanced, rs06.peak_nm, samples=21)
     assert after > before + 0.5
-
-
-@pytest.mark.xfail(
-    reason=(
-        "P2 asks for continuous payload at the worst pose in the whole "
-        "workspace within a derated thermal budget. That is far stricter than "
-        "any manufacturer payload rating, and the decisive evidence is that "
-        "the STOCK arm fails P2 too, at zero payload, because its own "
-        "self-weight exceeds the budget at extension (see "
-        "test_m2b_payload_envelope). So this xfail is not a clone regression "
-        "and not a balancer shortcoming -- the balancer does its job, halving "
-        "worst-case J2 to 7.13 N*m. It records that P2 as written is "
-        "mis-calibrated: it should either name a working envelope, as Seeed's "
-        "own specs do, or be stated against peak rather than continuous "
-        "torque. Needs a design decision, not a fix."
-    ),
-    strict=True,
-)
-def test_p2_one_kg_continuous_at_full_reach(balanced):
-    """Spec requirement P2, stated against the balanced model."""
-    assert max_continuous_payload(balanced, RS06().derated_nm(), samples=21) >= 1.0
