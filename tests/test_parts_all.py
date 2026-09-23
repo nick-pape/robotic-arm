@@ -117,8 +117,10 @@ def test_parent_boss_is_not_an_actuator_housing(part_case):
     if drums is None:
         pytest.skip("part is not built from drums")
     parent, child = drums()
-    assert parent.diameter < child.diameter
-    assert parent.diameter < 50.0
+    assert parent.diameter < child.diameter * 0.9, (
+        f"{body} parent boss O{parent.diameter:.0f} is not clearly smaller than "
+        f"its O{child.diameter:.0f} actuator housing"
+    )
 
 
 def test_whole_printed_assembly_saves_mass():

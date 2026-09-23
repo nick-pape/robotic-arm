@@ -64,8 +64,13 @@ CHILD_LENGTH = 54.0
 #: Two earlier profiles were wrong. One flared to O52 a fifth of the way along
 #: and read as a bone rather than a forearm. The next held O46 to the end and
 #: left the forearm visibly slimmer than the wrist hanging off it.
+#: Elbow boss. Swept against clearance with link2 in place: O64 still costs
+#: nothing, so O60 leaves margin. The bolt circle alone would give O36, but
+#: that met link2's O92 housing as a cliff rather than a step.
+BOSS_DIAMETER = 60.0
+
 TUBE_STATIONS = (0.0, 0.5, 0.8, 0.95)
-TUBE_DIAMETERS = (40.0, 42.0, 47.0, 60.0)
+TUBE_DIAMETERS = (56.0, 46.0, 50.0, 60.0)
 
 BORE_DIAMETER = 24.0
 
@@ -91,7 +96,9 @@ def _drums() -> tuple[Drum, Drum]:
     parent = Drum(
         centre=np.array([0.0, 0.0, PARENT_PROTRUSION - PARENT_LENGTH / 2]),
         axis=frame.parent_axis,
-        diameter=mount_boss_diameter(parent_circle.bcd, RULES.m3_clearance),
+        diameter=mount_boss_diameter(
+            parent_circle.bcd, RULES.m3_clearance, floor=BOSS_DIAMETER
+        ),
         length=PARENT_LENGTH,
     )
     child = Drum(

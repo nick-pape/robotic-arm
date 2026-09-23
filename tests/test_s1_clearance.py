@@ -95,8 +95,7 @@ def test_parent_drums_are_bosses_not_housings():
 
     for drums in (pitch_drums(), roll_drums()):
         parent, child = drums
-        assert parent.diameter < child.diameter, (
-            f"parent drum {parent.diameter:.1f} mm is not slimmer than the "
-            f"actuator housing {child.diameter:.1f} mm"
+        assert parent.diameter < child.diameter * 0.9, (
+            f"parent drum {parent.diameter:.1f} mm is not clearly slimmer than "
+            f"the actuator housing {child.diameter:.1f} mm"
         )
-        assert parent.diameter < 50.0

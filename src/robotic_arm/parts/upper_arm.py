@@ -1,0 +1,165 @@
+"""link2 -- the upper arm, between J2 and J3.
+
+The largest link, and the one the gravity balancer attaches to. Like link3 its
+joint axes are parallel, so it is a tapered tube with a drum at each end.
+
+Two things set it apart from the forearm:
+
+* It carries the **RS06** that drives J3, not an RS00, so the child housing is
+  O92 rather than O67 -- the biggest section on the arm.
+* Stock here is not a tube at all. The cross-section is 65 mm tall the whole
+  way but narrows to 26 mm wide at midspan: a flat structural beam, two plates
+  rather than a shell. A round section of any useful diameter is therefore
+  *wider* than stock at midspan, so the clearance sweep decides whether that
+  costs anything rather than the stock silhouette ruling it out.
+
+Stock is 1552 g across a 327 x 88 x 66 mm envelope.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+from build123d import Part
+
+from robotic_arm.actuators import RS06
+from robotic_arm.design import RULES
+from robotic_arm.linkframes import link_frame
+from robotic_arm.materials import PC_CF
+from robotic_arm.parts.cobot import (
+    CollisionCylinder,
+    Drum,
+    bolt_ring,
+    break_edges,
+    lofted_tube,
+    mount_boss_diameter,
+    seam_groove,
+    shell,
+)
+
+MATERIAL = PC_CF
+BODY = "link2"
+
+#: J2 boss. Stock leaves room for a full drum of about O88 on this axis, so
+#: unlike the wrist this end can be generous -- which it should be, since it is
+#: the shoulder end of the longest link and the biggest section of the arm.
+BOSS_DIAMETER = 76.0
+PARENT_LENGTH = 48.0
+PARENT_PROTRUSION = 10.0
+
+#: J3 housing, enclosing the RS06.
+CHILD_CLEARANCE = 3.0
+CHILD_LENGTH = 58.0
+
+#: Tube profile. Waisted at midspan where the bending moment is lowest, and
+#: growing into the child housing rather than pinching below it.
+TUBE_STATIONS = (0.0, 0.5, 0.92)
+TUBE_DIAMETERS = (60.0, 52.0, 64.0)
+
+BORE_DIAMETER = 26.0
+
+
+def child_diameter() -> float:
+    """Outer diameter of the J3 housing, from the RS06 it encloses."""
+    rs06 = RS06()
+    body_diameter = min(rs06.bbox_mm[0], rs06.bbox_mm[1]) if rs06.bbox_mm else 82.0
+    return body_diameter + 2 * (RULES.structural_wall_thickness + CHILD_CLEARANCE)
+
+
+def _mount_circle():
+    """The RS06 output circle this link bolts to at both ends."""
+    return {round(c.bcd, 2): c for c in RS06().bolt_circles}[24.02]
+
+
+def _drums() -> tuple[Drum, Drum]:
+    """Parent boss and child housing, shared by the solid and its collision proxy."""
+    frame = link_frame(BODY)
+    circle = _mount_circle()
+    parent = Drum(
+        centre=frame.parent_axis * (PARENT_PROTRUSION - PARENT_LENGTH / 2),
+        axis=frame.parent_axis,
+        diameter=mount_boss_diameter(
+            circle.bcd, RULES.m3_clearance, floor=BOSS_DIAMETER
+        ),
+        length=PARENT_LENGTH,
+    )
+    child = Drum(
+        centre=frame.child_origin,
+        axis=frame.child_axis,
+        diameter=child_diameter(),
+        length=CHILD_LENGTH,
+    )
+    return parent, child
+
+
+def _tube_path() -> tuple[list[np.ndarray], list[float]]:
+    frame = link_frame(BODY)
+    return (
+        [frame.child_origin * fraction for fraction in TUBE_STATIONS],
+        list(TUBE_DIAMETERS),
+    )
+
+
+def collision_primitives() -> list[CollisionCylinder]:
+    parent, child = _drums()
+    points, diameters = _tube_path()
+    proxies = [CollisionCylinder.from_drum(parent), CollisionCylinder.from_drum(child)]
+    for start, end, d_start, d_end in zip(points, points[1:], diameters, diameters[1:]):
+        proxies.append(CollisionCylinder.from_span(start, end, max(d_start, d_end)))
+    return proxies
+
+
+def build_upper_arm() -> Part:
+    """Return the upper arm as a solid, in link2's frame."""
+    frame = link_frame(BODY)
+    parent, child = _drums()
+    points, diameters = _tube_path()
+    wall = RULES.structural_wall_thickness
+
+    outer = parent.solid() + child.solid() + lofted_tube(points, diameters)
+    inner = (
+        parent.solid(parent.diameter - 2 * wall, parent.length - 2 * wall)
+        + child.solid(child.diameter - 2 * wall, child.length - 2 * wall)
+        + lofted_tube(points, [d - 2 * wall for d in diameters])
+    )
+    part = shell(outer, inner)
+
+    part -= Drum(
+        centre=parent.centre, axis=parent.axis, diameter=BORE_DIAMETER, length=140.0
+    ).solid()
+
+    circle = _mount_circle()
+    part -= bolt_ring(
+        centre=frame.parent_axis * (PARENT_PROTRUSION - PARENT_LENGTH),
+        axis=parent.axis,
+        bcd=circle.bcd,
+        count=circle.count,
+        hole_diameter=RULES.m3_clearance,
+        depth=44.0,
+    )
+    part -= bolt_ring(
+        centre=frame.child_origin + frame.child_axis * (CHILD_LENGTH / 2),
+        axis=child.axis,
+        bcd=circle.bcd,
+        count=circle.count,
+        hole_diameter=RULES.m3_clearance,
+        depth=44.0,
+    )
+
+    part -= seam_groove(parent, offset_along_axis=-PARENT_LENGTH / 2 + 5.0)
+    part -= seam_groove(child, offset_along_axis=CHILD_LENGTH / 2 - 5.0)
+
+    return break_edges(part)
+
+
+if __name__ == "__main__":
+    from robotic_arm.linkframes import stock_mass
+    from robotic_arm.massprops import mass_properties
+    from robotic_arm.parts import effective_material
+
+    part = build_upper_arm()
+    props = mass_properties(part, effective_material(part, MATERIAL))
+    bb = part.bounding_box()
+    print(f"solids {len(part.solids())}  volume {part.volume:,.0f} mm^3")
+    print(f"mass   {props.mass * 1000:.1f} g  (stock {stock_mass(BODY) * 1000:.0f} g)")
+    print(f"extent {[round(v, 1) for v in (bb.size.X, bb.size.Y, bb.size.Z)]} mm")
+    print(f"stock  {link_frame(BODY).stock_extent.round(1)} mm")
