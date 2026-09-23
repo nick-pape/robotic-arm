@@ -235,7 +235,9 @@ class CollisionCylinder:
         )
 
 
-def mount_boss_diameter(bcd: float, hole_diameter: float, margin: float = 2.5) -> float:
+def mount_boss_diameter(
+    bcd: float, hole_diameter: float, margin: float = 2.5, floor: float = 0.0
+) -> float:
     """Diameter of a drum that only has to carry a bolt circle.
 
     A link's *parent* drum does not enclose its own actuator: the motor driving
@@ -243,8 +245,15 @@ def mount_boss_diameter(bcd: float, hole_diameter: float, margin: float = 2.5) -
     houses a motor. Sizing a parent drum to an actuator therefore makes it far
     too fat, filling space the stock arm leaves open -- which shows up as
     self-collisions the stock arm does not have.
+
+    `floor` raises it above that structural minimum for proportion. All three
+    wrist joints use the same actuator, so all three housings come out the same
+    diameter and the wrist cannot taper; letting the bosses between them shrink
+    to the bolt circle turns a continuous stack into a row of lumps joined by
+    thin necks. A clearance sweep says O54 is free here and O60 is not.
     """
-    return bcd + 2 * (hole_diameter / 2 + RULES.structural_wall_thickness + margin)
+    structural = bcd + 2 * (hole_diameter / 2 + RULES.structural_wall_thickness + margin)
+    return max(structural, floor)
 
 
 def lofted_tube(

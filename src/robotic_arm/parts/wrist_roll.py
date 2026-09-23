@@ -42,6 +42,11 @@ PARENT_LENGTH = 42.0
 
 #: J6 drum, sized to enclose the RS00 that drives the tool flange. The
 #: actuator body is O57, so the shell clears it by a wall plus a running gap.
+#: Boss diameter, set for proportion rather than strength: it keeps the
+#: wrist reading as a continuous stack instead of drums on thin necks.
+#: Swept against clearance -- O54 is free, O60 costs 9 poses in 6000.
+BOSS_DIAMETER = 54.0
+
 CHILD_CLEARANCE = 3.0
 CHILD_LENGTH = 52.0
 
@@ -68,7 +73,9 @@ def _drums() -> tuple[Drum, Drum]:
     parent = Drum(
         centre=np.array([0.0, 0.0, PARENT_LENGTH / 2 - 8.0]),
         axis=frame.parent_axis,
-        diameter=mount_boss_diameter(mount.bcd, RULES.m3_clearance),
+        diameter=mount_boss_diameter(
+            mount.bcd, RULES.m3_clearance, floor=BOSS_DIAMETER
+        ),
         length=PARENT_LENGTH,
     )
     child = Drum(

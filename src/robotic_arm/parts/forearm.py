@@ -57,12 +57,15 @@ CHILD_LENGTH = 54.0
 #: Starting it partway out left the tube merely touching the boss tangentially,
 #: which OCCT will not fuse -- the part came out as two disconnected solids.
 #:
-#: The taper is deliberately shallow. An earlier profile flared to O52 a fifth
-#: of the way along and the part read as a bone rather than a forearm: against
-#: a O36 boss, that much swell is a bulge, not a taper. A cobot forearm is
-#: close to a constant tube with a slight waist.
-TUBE_STATIONS = (0.0, 0.1, 0.5, 0.95)
-TUBE_DIAMETERS = (38.0, 46.0, 42.0, 46.0)
+#: The taper is shallow and, past midspan, monotonically outward: the tube
+#: grows into the O67 wrist housing rather than pinching to O46 and jumping.
+#: An arm should not get thinner than the section that follows it.
+#:
+#: Two earlier profiles were wrong. One flared to O52 a fifth of the way along
+#: and read as a bone rather than a forearm. The next held O46 to the end and
+#: left the forearm visibly slimmer than the wrist hanging off it.
+TUBE_STATIONS = (0.0, 0.5, 0.8, 0.95)
+TUBE_DIAMETERS = (40.0, 42.0, 47.0, 60.0)
 
 BORE_DIAMETER = 24.0
 

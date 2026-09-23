@@ -47,6 +47,11 @@ PARENT_LENGTH = 48.0
 PARENT_PROTRUSION = 10.0
 
 #: J5 drum, enclosing the actuator that drives link5.
+#: Boss diameter, set for proportion rather than strength: it keeps the
+#: wrist reading as a continuous stack instead of drums on thin necks.
+#: Swept against clearance -- O54 is free, O60 costs 9 poses in 6000.
+BOSS_DIAMETER = 54.0
+
 CHILD_CLEARANCE = 3.0
 CHILD_LENGTH = 56.0
 
@@ -71,7 +76,9 @@ def _drums() -> tuple[Drum, Drum]:
     parent = Drum(
         centre=np.array([0.0, 0.0, PARENT_PROTRUSION - PARENT_LENGTH / 2]),
         axis=frame.parent_axis,
-        diameter=mount_boss_diameter(mount.bcd, RULES.m3_clearance),
+        diameter=mount_boss_diameter(
+            mount.bcd, RULES.m3_clearance, floor=BOSS_DIAMETER
+        ),
         length=PARENT_LENGTH,
     )
     # Pull the child drum back along its own axis so its far face lands on the
