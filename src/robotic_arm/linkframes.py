@@ -140,3 +140,78 @@ if __name__ == "__main__":
             f"   perpendicular={frame.axes_are_perpendicular}  "
             f"span={frame.span:.1f} mm  extent={frame.stock_extent.round(1)}"
         )
+
+
+def inscribed_drum_radius(
+    name: str,
+    station: float,
+    half_height: float = 25.0,
+    sectors: int = 16,
+    axis: np.ndarray | None = None,
+) -> float:
+    """Largest full drum that fits inside the stock silhouette at a station.
+
+    A printed drum is round, so it only stays within the space the stock part
+    occupies if stock has material out to that radius in *every* direction.
+    Taking the maximum radius would be badly wrong for a long link, where the
+    far end dominates every slice; this takes the minimum across angular
+    sectors, which is the radius a full drum can actually reach.
+
+    A sector with no stock material at all returns 0: a drum there would sit
+    entirely in open space. That is exactly what link4's oversized parent drum
+    did, and it surfaced only later as a self-collision the stock arm does not
+    have.
+
+    `station` and the result are millimetres along, and from, the axis.
+    """
+    model = load_baseline()
+    bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
+    if bid < 0:
+        raise KeyError(f"no body named {name!r}")
+
+    axis = link_frame(name).parent_axis if axis is None else np.asarray(axis, float)
+    axis = axis / np.linalg.norm(axis)
+    seed = np.array([1.0, 0.0, 0.0])
+    if abs(float(seed @ axis)) > 0.9:
+        seed = np.array([0.0, 1.0, 0.0])
+    u = np.cross(axis, seed)
+    u /= np.linalg.norm(u)
+    v = np.cross(axis, u)
+
+    clouds = []
+    for g in range(model.ngeom):
+        if model.geom_bodyid[g] != bid or model.geom_group[g] != 2:
+            continue
+        mid = model.geom_dataid[g]
+        first, count = model.mesh_vertadr[mid], model.mesh_vertnum[mid]
+        verts = (
+            model.mesh_vert[first : first + count] @ _quat2mat(model.geom_quat[g]).T
+            + model.geom_pos[g]
+        )
+        clouds.append(verts * M_TO_MM)
+    if not clouds:
+        return 0.0
+
+    cloud = np.vstack(clouds)
+    along = cloud @ axis
+    band = cloud[np.abs(along - station) <= half_height]
+    if len(band) == 0:
+        return 0.0
+
+    x, y = band @ u, band @ v
+    radius = np.hypot(x, y)
+    angle = np.arctan2(y, x)
+    index = ((angle + np.pi) / (2 * np.pi) * sectors).astype(int) % sectors
+
+    reach = np.zeros(sectors)
+    for sector in range(sectors):
+        mask = index == sector
+        reach[sector] = radius[mask].max() if mask.any() else 0.0
+    return float(reach.min())
+
+
+def fits_inside_stock(
+    name: str, station: float, diameter: float, half_height: float = 25.0
+) -> bool:
+    """Whether a drum of `diameter` at `station` stays inside stock's silhouette."""
+    return diameter / 2 <= inscribed_drum_radius(name, station, half_height)

@@ -245,3 +245,45 @@ def mount_boss_diameter(bcd: float, hole_diameter: float, margin: float = 2.5) -
     self-collisions the stock arm does not have.
     """
     return bcd + 2 * (hole_diameter / 2 + RULES.structural_wall_thickness + margin)
+
+
+def lofted_tube(
+    points: list[np.ndarray], diameters: list[float]
+) -> Part:
+    """A tube through a series of stations, tapering between given diameters.
+
+    A long link is not a constant-diameter tube on a real cobot, and it should
+    not be here either: the stock forearm narrows to about O44 at midspan and
+    flares at both ends, because that is where the bending moment is lowest.
+    Following that profile both looks right and keeps the part inside the space
+    the stock arm occupies.
+    """
+    from build123d import Circle, Plane, Vector, loft
+
+    if len(points) != len(diameters) or len(points) < 2:
+        raise ValueError("need matching points and diameters, at least two")
+
+    sections = []
+    for index, (point, diameter) in enumerate(zip(points, diameters)):
+        # Orient each section across the local run direction, so the loft does
+        # not shear where the path changes angle.
+        if index == 0:
+            direction = np.asarray(points[1], float) - np.asarray(points[0], float)
+        elif index == len(points) - 1:
+            direction = np.asarray(points[-1], float) - np.asarray(points[-2], float)
+        else:
+            direction = np.asarray(points[index + 1], float) - np.asarray(
+                points[index - 1], float
+            )
+        direction = direction / np.linalg.norm(direction)
+        plane = Plane(
+            origin=Vector(*(float(v) for v in point)),
+            z_dir=Vector(*(float(v) for v in direction)),
+        )
+        sections.append(plane * Circle(diameter / 2))
+    return loft(sections)
+
+
+def shell(outer: Part, inner: Part) -> Part:
+    """Hollow a solid by subtracting a matching inner solid."""
+    return outer - inner
