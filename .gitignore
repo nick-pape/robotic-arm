@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# CAD build artifacts
+exports/*
+!exports/.gitkeep
+*.step
+*.stp
+*.stl
+*.3mf
+*.dxf
+*.svg
+!docs/**/*.svg
+
+# build123d-mcp session snapshots
+.build123d-mcp/
+snapshots/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
