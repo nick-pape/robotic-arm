@@ -337,30 +337,34 @@ def apply_visual_meshes(spec: mujoco.MjSpec, solids: Mapping[str, object]) -> mu
         if not visuals:
             raise ValueError(f"no visual geom found on {body_name!r}")
 
+        # Split the actuators out first. They are real hardware that stays on
+        # the arm and must survive the swap -- and the stock geom order puts
+        # the motor *first* on link2, link4 and link5, so taking "the first
+        # visual" to repoint silently overwrote three of the five motors.
+        motors = [g for g in visuals if (g.meshname or "").startswith("motor")]
+        structure = [g for g in visuals if g not in motors]
+        if not structure:
+            raise ValueError(
+                f"{body_name!r} has only actuator meshes; nothing to replace"
+            )
+
         # Stock visual geoms carry a pos and quat, because their meshes were
         # authored in their own frames. Ours are authored directly in the body
         # frame -- the same frame the inertial is expressed in -- so those
         # transforms must be cleared. Leaving them would rotate the rendered
-        # part away from the inertia tensor we computed for it, and the picture
-        # would silently disagree with the physics.
-        first, *extra = visuals
-        first.meshname = mesh_name
-        first.pos = np.zeros(3)
-        first.quat = np.array([1.0, 0.0, 0.0, 0.0])
-        first.material = ""  # drop the stock material so rgba takes effect
-        first.rgba = np.array(PRINTED_RGBA, dtype=float)
+        # part away from the inertia tensor we computed for it.
+        keep, *spares = structure
+        keep.meshname = mesh_name
+        keep.pos = np.zeros(3)
+        keep.quat = np.array([1.0, 0.0, 0.0, 0.0])
+        keep.material = ""  # drop the stock material so rgba takes effect
+        keep.rgba = np.array(PRINTED_RGBA, dtype=float)
 
-        # A stock link may carry several visual meshes (structure, motor,
-        # cover). One printed solid replaces the lot, so the spares are
-        # deleted. Hiding them in an undrawn group is not enough: the
-        # offscreen renderer draws every group, and two coincident meshes
-        # z-fight into a mess of streaks.
-        for geom in extra:
-            # Keep the actuator meshes. They are real hardware that stays on
-            # the arm, and showing them is what makes a render able to answer
-            # whether a printed shell actually clears its motor.
-            if (geom.meshname or "").startswith("motor"):
-                continue
+        # One printed solid replaces all the stock structure, so the remaining
+        # structural meshes go. Hiding them in an undrawn group is not enough:
+        # the offscreen renderer draws every group, and two coincident meshes
+        # z-fight into streaks.
+        for geom in spares:
             spec.delete(geom)
     return spec
 

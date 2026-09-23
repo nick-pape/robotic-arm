@@ -24,13 +24,14 @@ from build123d import Part
 
 from robotic_arm.actuators import RS00, RS06
 from robotic_arm.design import RULES
-from robotic_arm.linkframes import link_frame
+from robotic_arm.linkframes import actuator_centre, link_frame
 from robotic_arm.materials import PC_CF
 from robotic_arm.parts.cobot import (
     CollisionCylinder,
     Drum,
     bolt_ring,
     boss_centre,
+    housing_over,
     boss_mount_face,
     break_edges,
     lofted_tube,
@@ -110,20 +111,41 @@ def _drums() -> tuple[Drum, Drum]:
     # regressions. Stock does not enclose them either: its links are open
     # brackets with the motors visibly exposed, which is why they show in the
     # renders. A fully closed wrist would need more room than this arm has.
-    child = Drum(
-        centre=frame.child_origin,
-        axis=frame.child_axis,
-        diameter=child_diameter(),
-        length=CHILD_LENGTH,
-    )
+    # Centre the housing on the motor it encloses, not on the joint origin:
+    # the motor sits 26-30 mm off that plane on these links, and placing the
+    # drum at the joint left it visibly beside the motor rather than round it.
+    motor_at = actuator_centre(BODY, near=frame.child_origin)
+    if motor_at is not None:
+        placed = housing_over(frame, motor_at, CHILD_LENGTH)
+        child = Drum(
+            centre=placed.centre,
+            axis=placed.axis,
+            diameter=child_diameter(),
+            length=placed.length,
+        )
+    else:
+        child = Drum(
+            centre=frame.child_origin,
+            axis=frame.child_axis,
+            diameter=child_diameter(),
+            length=CHILD_LENGTH,
+        )
     return parent, child
 
 
 def _tube_path() -> tuple[list[np.ndarray], list[float]]:
-    """Stations along the span, and the tube diameter at each."""
-    frame = link_frame(BODY)
+    """Stations along the tube, and its diameter at each.
+
+    The tube runs between the two drum *centres*, not between the joint
+    origins. Those differ: the motors sit 26 mm off the joint plane, so a tube
+    drawn between origins floats above the housing it is supposed to meet --
+    on link2 that made the part 87 mm tall against a 66 mm stock envelope.
+    """
+    parent, child = _drums()
+    start = np.asarray(parent.centre, dtype=float)
+    end = np.asarray(child.centre, dtype=float)
     return (
-        [frame.child_origin * fraction for fraction in TUBE_STATIONS],
+        [start + (end - start) * fraction for fraction in TUBE_STATIONS],
         list(TUBE_DIAMETERS),
     )
 

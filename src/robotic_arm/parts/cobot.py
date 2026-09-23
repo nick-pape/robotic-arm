@@ -331,3 +331,37 @@ def boss_mount_face(frame, length: float, protrusion: float) -> np.ndarray:
     reach = float(np.asarray(frame.stock_centre, dtype=float) @ axis)
     toward_body = axis * (1.0 if reach >= 0 else -1.0)
     return boss_centre(frame, length, protrusion) - toward_body * (length / 2)
+
+
+def housing_over(frame, motor_centre: np.ndarray, motor_length: float) -> Drum:
+    """A housing that covers both the carried motor and the child mount face.
+
+    Two constraints pull in different directions and both matter. The drum must
+    sit over the motor, which on these links is 26-30 mm off the joint plane --
+    centring it on the joint instead left it visibly beside the motor. It must
+    also reach the child joint origin, because that is where the next link
+    bolts on; centring it purely on the motor pulled link5's face 1.5 mm short
+    of link6's mount.
+
+    So the drum spans from behind the motor to the mount face, whichever is
+    further, and sits on the motor's own offset from the axis.
+    """
+    axis = np.asarray(frame.child_axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+    motor_centre = np.asarray(motor_centre, dtype=float)
+    child = np.asarray(frame.child_origin, dtype=float)
+
+    motor_at = float(motor_centre @ axis)
+    child_at = float(child @ axis)
+    low = min(motor_at - motor_length / 2, child_at)
+    high = max(motor_at + motor_length / 2, child_at)
+
+    # Perpendicular position follows the motor; only the along-axis extent
+    # is stretched to reach the mount face.
+    perpendicular = motor_centre - axis * motor_at
+    return Drum(
+        centre=perpendicular + axis * (low + high) / 2,
+        axis=axis,
+        diameter=0.0,  # caller fills this in; only placement is decided here
+        length=high - low,
+    )

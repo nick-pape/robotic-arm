@@ -287,3 +287,45 @@ def drum_for_actuator(
         across + 2 * (wall + clearance),
         along + 2 * (wall + clearance),
     )
+
+
+def actuator_centre(name: str, near: np.ndarray | None = None) -> np.ndarray | None:
+    """Where the carried actuator actually sits, in the link's frame, mm.
+
+    Position only -- not size. The two are separate decisions and conflating
+    them was a mistake: sizing a housing to the motor's full mesh envelope
+    (~82 mm across, body plus connectors) gives O92 drums that collide, while
+    simply *centring* a body-sized housing on the real motor costs nothing and
+    fixes a visible misalignment.
+
+    `near` picks one cluster when a mesh holds more than one motor, as link2's
+    `motor_2_3` does: it spans both the J2 and J3 ends of the link.
+    """
+    envelope = actuator_envelope(name)
+    if envelope is None:
+        return None
+    if envelope.is_plausibly_one_motor or near is None:
+        return np.asarray(envelope.centre, dtype=float)
+
+    # Several motors in one mesh: take the vertices nearest the given point.
+    model = load_baseline()
+    bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
+    for g in range(model.ngeom):
+        if model.geom_bodyid[g] != bid or model.geom_group[g] != 2:
+            continue
+        mesh = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_MESH, model.geom_dataid[g])
+        if mesh != envelope.mesh:
+            continue
+        mid = model.geom_dataid[g]
+        first, count = model.mesh_vertadr[mid], model.mesh_vertnum[mid]
+        verts = (
+            model.mesh_vert[first : first + count] @ _quat2mat(model.geom_quat[g]).T
+            + model.geom_pos[g]
+        ) * M_TO_MM
+        near = np.asarray(near, dtype=float)
+        # Half the span between clusters is a safe cut-off.
+        keep = verts[np.linalg.norm(verts - near, axis=1) < 120.0]
+        if len(keep) == 0:
+            return None
+        return (keep.min(axis=0) + keep.max(axis=0)) / 2
+    return None
