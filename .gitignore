@@ -30,3 +30,7 @@ Thumbs.db
 
 # Generated simulation models (regenerate: uv run python -m robotic_arm.mjcf)
 sim/
+
+# Rendered animations are useful locally but too heavy to commit
+docs/*.gif
+docs/*.mp4

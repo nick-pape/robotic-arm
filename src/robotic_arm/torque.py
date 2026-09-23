@@ -129,3 +129,86 @@ def report(model: mujoco.MjModel | None = None) -> str:
 
 if __name__ == "__main__":
     print(report())
+
+
+def j2_moment_arm(data, model) -> float:
+    """Horizontal distance from the J2 axis to the tool, in metres.
+
+    This, not TCP reach, is what sets the shoulder moment: the forearm can fold
+    back so the tool sits close to the base while the upper arm stays
+    horizontal. Filtering a workspace by reach therefore barely reduces J2
+    load, which is why "70% of the workspace" cannot mean 70% of reach.
+    """
+    return abs(data.body("gripper_end").xpos[0] - data.body("link2").xpos[0])
+
+
+def max_payload(
+    model: mujoco.MjModel,
+    limit_nm: float,
+    max_arm: float | None = None,
+    samples: int = 45,
+    tolerance: float = 0.05,
+    ceiling: float = 8.0,
+) -> float:
+    """Heaviest payload keeping worst-case J2 torque within `limit_nm`.
+
+    `max_arm` restricts the sweep to poses whose J2 moment arm is at most that
+    far out, which is how a reduced working envelope is expressed.
+
+    Which `limit_nm` you pass decides what question is being asked, and the
+    answers differ enormously:
+
+    * **peak torque** (36 N*m) -- what the arm can lift at all. This is the
+      criterion that reproduces a manufacturer payload rating.
+    * **rated torque** (11 N*m) -- what it could hold indefinitely with the
+      specified heat sink. Even the stock arm scores 0 kg here, because
+      self-weight alone exceeds it at extension; that is a sign the criterion
+      is not what payload ratings mean, not a sign the arm is deficient.
+    """
+    bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "gripper_end")
+    original = float(model.body_mass[bid])
+    data = mujoco.MjData(model)
+    j2 = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "joint2")
+    j3 = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "joint3")
+
+    def worst(payload: float) -> float:
+        model.body_mass[bid] = original + payload
+        out = 0.0
+        for q2 in np.linspace(*model.jnt_range[j2], samples):
+            for q3 in np.linspace(*model.jnt_range[j3], samples):
+                data.qpos[:] = 0
+                data.qpos[1], data.qpos[2] = q2, q3
+                mujoco.mj_forward(model, data)
+                if max_arm is not None and j2_moment_arm(data, model) > max_arm:
+                    continue
+                out = max(out, abs(float(data.qfrc_bias[1])))
+        return out
+
+    try:
+        if worst(0.0) > limit_nm:
+            return 0.0
+        low, high = 0.0, ceiling
+        while high - low > tolerance:
+            mid = (low + high) / 2
+            if worst(mid) <= limit_nm:
+                low = mid
+            else:
+                high = mid
+        return low
+    finally:
+        model.body_mass[bid] = original
+
+
+def max_moment_arm(model: mujoco.MjModel, samples: int = 45) -> float:
+    """Largest J2 moment arm the arm can reach, for scaling an envelope."""
+    data = mujoco.MjData(model)
+    j2 = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "joint2")
+    j3 = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "joint3")
+    out = 0.0
+    for q2 in np.linspace(*model.jnt_range[j2], samples):
+        for q3 in np.linspace(*model.jnt_range[j3], samples):
+            data.qpos[:] = 0
+            data.qpos[1], data.qpos[2] = q2, q3
+            mujoco.mj_forward(model, data)
+            out = max(out, j2_moment_arm(data, model))
+    return out

@@ -138,14 +138,17 @@ def test_balancer_improves_intermittent_payload(balanced, unbalanced):
 
 @pytest.mark.xfail(
     reason=(
-        "P2 is not met by a simple ZFL J2 spring on the printed clone's "
-        "derated budget. The optimal balancer leaves "
-        "~7.1 N*m of the ~7.7 N*m continuous budget consumed by self-weight, "
-        "so continuous payload at worst-case pose is ~0.05 kg, not the 1.0 kg "
-        "the spec hoped for. The limit is the J3-folding shape mismatch, which "
-        "a J2-only spring cannot cancel -- closing it needs a different "
-        "topology (a J3 balancer, or a parallelogram keeping the distal COM "
-        "fixed), or a reduced working envelope. Design decision, not a bug."
+        "P2 asks for continuous payload at the worst pose in the whole "
+        "workspace within a derated thermal budget. That is far stricter than "
+        "any manufacturer payload rating, and the decisive evidence is that "
+        "the STOCK arm fails P2 too, at zero payload, because its own "
+        "self-weight exceeds the budget at extension (see "
+        "test_m2b_payload_envelope). So this xfail is not a clone regression "
+        "and not a balancer shortcoming -- the balancer does its job, halving "
+        "worst-case J2 to 7.13 N*m. It records that P2 as written is "
+        "mis-calibrated: it should either name a working envelope, as Seeed's "
+        "own specs do, or be stated against peak rather than continuous "
+        "torque. Needs a design decision, not a fix."
     ),
     strict=True,
 )

@@ -21,6 +21,10 @@ dev = [
 cad = [
     "quiddity>=0.3,<0.4",
 ]
+# Offscreen rendering to GIF/PNG. Not needed to run the sim or the tests.
+viz = [
+    "pillow>=10",
+]
 
 [build-system]
 requires = ["hatchling"]

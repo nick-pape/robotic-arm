@@ -180,3 +180,45 @@ if __name__ == "__main__":
     model = load(path)
     print(f"wrote {path.relative_to(REPO)}  ({path.stat().st_size:,} B)")
     print(f"  {model.nbody} bodies, {model.njnt} joints, {model.ngeom} geoms")
+
+
+#: A viewable scene needs lighting, a floor and a skybox, which the bare model
+#: deliberately does not carry. Mirrors Menagerie's own scene.xml so the twin
+#: looks like the stock model does in the viewer.
+_SCENE_TEMPLATE = """<mujoco model="robotic-arm twin scene">
+  <include file="{model_file}"/>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="140" elevation="-20"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0"
+      width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge"
+      rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8"
+      width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true"
+      texrepeat="5 5" reflectance="0.2"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
+  </worldbody>
+</mujoco>
+"""
+
+
+def generate_scene(model_path: Path, out: Path | None = None) -> Path:
+    """Write a viewable scene wrapping an already-generated model.
+
+    Kept separate from `generate` so the model itself stays a faithful
+    stock-plus-inertials artifact: the floor and lights are presentation, and
+    adding them to the model would make the F2 diff meaningless.
+    """
+    out = out or model_path.with_name(model_path.stem + "_scene.xml")
+    out.write_text(_SCENE_TEMPLATE.format(model_file=model_path.name))
+    return out
