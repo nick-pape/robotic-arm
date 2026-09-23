@@ -19,6 +19,7 @@ names it rather than leaving it as a mystery in a failing test.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from pathlib import Path
 
@@ -191,7 +192,8 @@ _SCENE_TEMPLATE = """<mujoco model="robotic-arm twin scene">
   <visual>
     <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
     <rgba haze="0.15 0.25 0.35 1"/>
-    <global azimuth="140" elevation="-20"/>
+    <!-- Offscreen framebuffer defaults to 640x480; renders need more. -->
+    <global azimuth="140" elevation="-20" offwidth="1920" offheight="1440"/>
   </visual>
 
   <asset>
@@ -222,3 +224,93 @@ def generate_scene(model_path: Path, out: Path | None = None) -> Path:
     out = out or model_path.with_name(model_path.stem + "_scene.xml")
     out.write_text(_SCENE_TEMPLATE.format(model_file=model_path.name))
     return out
+
+
+def cad_inertials() -> dict[str, MassProperties]:
+    """Mass properties for every printed part designed so far.
+
+    Bodies absent from the registry keep their stock inertials, so the twin is
+    always "stock, except where we have actually designed a replacement".
+    """
+    from robotic_arm.massprops import mass_properties
+    from robotic_arm.parts import REGISTRY, effective_material
+
+    out = {}
+    for body, (build, material) in REGISTRY.items():
+        part = build()
+        out[body] = mass_properties(part, effective_material(part, material))
+    return out
+
+
+def generate_twin(
+    out: Path = SIM_MODEL,
+    balancer: Balancer | None = None,
+    visuals: bool = True,
+) -> Path:
+    """The digital twin as currently designed: stock plus every printed part.
+
+    `visuals` also swaps the rendered meshes, so the picture matches the
+    physics. Turn it off to compare inertial effects alone.
+    """
+    from robotic_arm.massprops import mass_properties
+    from robotic_arm.parts import REGISTRY, effective_material
+
+    require(BASELINE_MJCF)
+    spec = mujoco.MjSpec.from_file(str(BASELINE_MJCF))
+
+    solids = {body: build() for body, (build, _) in REGISTRY.items()}
+    overrides = {
+        body: mass_properties(
+            solids[body], effective_material(solids[body], material)
+        )
+        for body, (_, material) in REGISTRY.items()
+    }
+    apply_inertials(spec, overrides)
+    if visuals:
+        apply_visual_meshes(spec, solids)
+    if balancer is not None:
+        add_to_spec(spec, balancer)
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    spec.meshdir = str(require(ASSET_DIR)).replace("\\", "/")
+    spec.compile()
+    out.write_text(spec.to_xml())
+    return out
+
+
+#: Printed part meshes are written here and referenced from the generated model.
+MESH_DIR = SIM_DIR / "meshes"
+
+
+def apply_visual_meshes(spec: mujoco.MjSpec, solids: Mapping[str, object]) -> mujoco.MjSpec:
+    """Repoint each named body's visual geom at its printed CAD geometry.
+
+    Without this the twin would keep showing stock meshes while carrying CAD
+    inertials -- correct physics, misleading picture. Since the point of the
+    render is design feedback, the two need to agree.
+
+    Collision geometry is deliberately left as Menagerie's convex decomposition
+    for now. Swapping it means either accepting the convex hull of a part with a
+    bore through it, or emitting analytic primitives per part; the latter is the
+    right answer and is a later job.
+    """
+    from build123d import export_stl
+
+    MESH_DIR.mkdir(parents=True, exist_ok=True)
+    for body_name, solid in solids.items():
+        stl = MESH_DIR / f"{body_name}_printed.stl"
+        export_stl(solid, str(stl), tolerance=1e-3, angular_tolerance=0.1)
+
+        mesh_name = f"{body_name}_printed"
+        # meshdir points at the reference assets, so reference ours relative to
+        # it. CAD is in mm; MJCF is in metres.
+        rel = os.path.relpath(stl, ASSET_DIR).replace("\\", "/")
+        spec.add_mesh(name=mesh_name, file=rel, scale=[1e-3, 1e-3, 1e-3])
+
+        body = spec.body(body_name)
+        visuals = [g for g in body.geoms if "_col_" not in (g.meshname or "")]
+        if not visuals:
+            raise ValueError(f"no visual geom found on {body_name!r}")
+        for geom in visuals:
+            geom.meshname = mesh_name
+    return spec

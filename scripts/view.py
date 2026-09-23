@@ -25,7 +25,7 @@ import mujoco.viewer
 
 from robotic_arm.actuators import RS06
 from robotic_arm.balancer import Balancer, static_torques
-from robotic_arm.mjcf import generate, generate_scene, load
+from robotic_arm.mjcf import generate_scene, generate_twin, load
 from robotic_arm.motion import leg_names, trajectory
 from robotic_arm.thermal import sustainability
 
@@ -47,7 +47,7 @@ def main() -> None:
     args = parser.parse_args()
 
     balancer = Balancer.sized_for(8.25) if args.balancer else None
-    model_path = generate(out=REPO / "sim" / "view_model.xml", balancer=balancer)
+    model_path = generate_twin(out=REPO / "sim" / "view_model.xml", balancer=balancer)
     model = load(generate_scene(model_path))
     data = mujoco.MjData(model)
 

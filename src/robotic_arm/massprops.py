@@ -17,7 +17,7 @@ modelled in its link frame.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable
 
 import numpy as np
@@ -126,3 +126,31 @@ def combine(parts: Iterable[MassProperties]) -> MassProperties:
         inertia += p.inertia + p.mass * (float(d @ d) * np.eye(3) - np.outer(d, d))
 
     return MassProperties(mass=total, com=com, inertia=inertia)
+
+
+def printed_density(shape, material: Material, *, infill: float, walls: int,
+                    nozzle: float = 0.4) -> Material:
+    """Effective density derived from the part's own geometry.
+
+    `Material.printed()` assumes a fixed characteristic section, which is wrong
+    by a lot for parts far from that size: a thin flange is nearly all
+    perimeter, a chunky link is nearly all infill. This instead estimates the
+    shell from the actual surface area, which is the quantity that decides how
+    much solid perimeter a slicer will lay down:
+
+        shell_volume ~= surface_area * wall_thickness
+
+    It overestimates slightly at concave corners, where adjacent walls share
+    material, and ignores solid top and bottom layers, which pull the other
+    way. Still an estimate -- the honest fix is to slice the part and read the
+    filament usage, which is left as a seam (`Material.measured`).
+    """
+    if not 0.0 <= infill <= 1.0:
+        raise ValueError(f"infill must be 0-1, got {infill}")
+    volume = shape.volume
+    if volume <= 0:
+        raise ValueError(f"shape has volume {volume}; need a solid")
+
+    shell_fraction = min(1.0, shape.area * walls * nozzle / volume)
+    fill = shell_fraction + (1.0 - shell_fraction) * infill
+    return replace(material, fill=fill)

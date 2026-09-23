@@ -34,3 +34,6 @@ sim/
 # Rendered animations are useful locally but too heavy to commit
 docs/*.gif
 docs/*.mp4
+
+# Static design renders — regenerate: uv run --extra viz python scripts/snapshot.py
+renders/

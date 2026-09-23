@@ -22,7 +22,7 @@ import numpy as np
 from PIL import Image
 
 from robotic_arm.balancer import Balancer
-from robotic_arm.mjcf import generate, generate_scene, load
+from robotic_arm.mjcf import generate_scene, generate_twin, load
 from robotic_arm.motion import trajectory
 
 REPO = Path(__file__).resolve().parents[1]
@@ -39,7 +39,7 @@ def render(
     colors: int,
 ) -> Path:
     balancer = Balancer.sized_for(8.25) if use_balancer else None
-    model_path = generate(out=REPO / "sim" / "render_model.xml", balancer=balancer)
+    model_path = generate_twin(out=REPO / "sim" / "render_model.xml", balancer=balancer)
     model = load(generate_scene(model_path))
     data = mujoco.MjData(model)
 
