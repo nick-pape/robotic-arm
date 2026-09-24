@@ -191,12 +191,21 @@ Still open, and blocking fabrication:
   this is a parity regression rather than overlap as such. The printed drums
   are round and fatter at the seams than stock's flat beams. Fixing it needs
   slimmer seam geometry or reduced joint limits. Tracked as a strict xfail.
-- **Payload is applied at the gripper COM, 112.75 mm behind the tool origin**,
-  so the reported 5 kg understates the real J2 moment -- 38.2 N*m against a
-  36 N*m peak at one admitted pose.
+- ~~Payload applied at the gripper COM~~ **fixed.** It now hangs at the
+  grasp point between the fingers. Stock workpiece capacity drops 5.00 ->
+  4.00 kg as a result, and the earlier "reproduces the advertised 5 kg
+  exactly" claim was an artefact of the 113 mm error. With the 0.8 kg gripper
+  counted, total at the tool is 4.8 kg against the advertised 5 -- consistent,
+  but the quoting convention is an assumption, so it is not validation.
+- ~~No bolt access~~ **fixed.** `assembly.py` checks whether a driver can
+  reach each fastener along its own axis. Four of six parent-mount bolts on
+  link2 and link3 could not be reached from either direction; access ports
+  through the opposite wall fixed it, and a test now requires every mount ring
+  to have at least one working approach.
 - **Motor meshes still intersect the shells** (40-52 sampled vertices per
   link), and the vendor envelope disagrees with the stock motor assets.
-- No assembly sequence, bolt access, or cable route has been established.
+- Cable route is a side channel beside each actuator, but no harness
+  routing, strain relief or connector access has been designed.
 - `structure.py` does not establish P3: it is a per-link cantilever, while P3
   is whole-arm TCP deflection.
 

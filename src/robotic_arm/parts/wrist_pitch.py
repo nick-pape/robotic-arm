@@ -23,6 +23,7 @@ from robotic_arm.materials import PC_CF
 from robotic_arm.parts.cobot import (
     CollisionCylinder,
     Drum,
+    access_ports,
     bolt_ring,
     cable_channel,
     boss_centre,
@@ -181,6 +182,18 @@ def build_wrist_pitch() -> Part:
         count=mount.count,
         hole_diameter=RULES.m3_clearance,
         depth=30.0,
+    )
+
+    # Driver access to the parent mount. Without ports two of the six bolts
+    # cannot be reached from either side.
+    from robotic_arm.assembly import DRIVER_DIAMETER
+
+    part -= access_ports(
+        parent,
+        boss_mount_face(frame, PARENT_LENGTH, PARENT_PROTRUSION),
+        mount,
+        DRIVER_DIAMETER["M3"],
+        depth=PARENT_LENGTH * 2,
     )
 
     # Open the mating face. The child link's boss enters here, as does the

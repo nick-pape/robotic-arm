@@ -29,6 +29,7 @@ from robotic_arm.materials import PC_CF
 from robotic_arm.parts.cobot import (
     CollisionCylinder,
     Drum,
+    access_ports,
     bolt_ring,
     cable_channel,
     boss_centre,
@@ -220,6 +221,19 @@ def build_forearm() -> Part:
     part -= mount_face_ring(
         child, towards=frame.child_origin, circle=child_circle,
         hole_diameter=RULES.m3_clearance, depth=RULES.structural_wall_thickness * 3,
+    )
+
+    # Driver access to the parent mount. The tube leaves the boss directly
+    # over four of the six bolts, so a hex key reaches none of them from
+    # either side; without ports the part cannot be fastened at all.
+    from robotic_arm.assembly import DRIVER_DIAMETER
+
+    part -= access_ports(
+        parent,
+        boss_mount_face(frame, PARENT_LENGTH, PARENT_PROTRUSION),
+        parent_circle,
+        DRIVER_DIAMETER["M3"],
+        depth=PARENT_LENGTH * 2,
     )
 
     # Open the mating face. The child link's boss enters here, as does the

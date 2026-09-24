@@ -436,3 +436,42 @@ def mating_face_opening(
     depth = (RULES.structural_wall_thickness * 3) if depth is None else depth
     # Start just inside the shell and cut outward through the cap.
     return _oriented_cylinder(face + outward * (depth / 2 - depth), outward, diameter / 2, depth * 2)
+
+
+def access_ports(
+    drum: Drum,
+    mount_face: np.ndarray,
+    circle,
+    driver_diameter: float,
+    depth: float,
+) -> Part:
+    """Driver-sized holes through the far wall, coaxial with a bolt circle.
+
+    A mount face can be perfectly reachable in principle and unusable in
+    practice: on link2 and link3 the connecting tube leaves the boss directly
+    over four of the six mounting bolts, so a hex key cannot reach them from
+    either direction. The screws exist, the holes exist, and the part cannot be
+    fastened.
+
+    Ports are the conventional answer -- a clear bore through the opposite wall
+    so the driver passes straight through. They cost a little stiffness and
+    leave openings that want plugs or a cover, which is a fair trade against
+    not being buildable.
+    """
+    axis = np.asarray(drum.axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+    mount_face = np.asarray(mount_face, dtype=float)
+
+    # Bore away from the mount face, into the part. Deriving the direction
+    # rather than passing it avoids the sign trap that runs through this arm:
+    # link2's parent axis points opposite link3's, so a hardcoded direction
+    # drills out of one part and through the other.
+    inward = np.sign(float((np.asarray(drum.centre, float) - mount_face) @ axis)) or 1.0
+    return bolt_ring(
+        centre=mount_face + axis * inward * depth / 2,
+        axis=axis,
+        bcd=circle.bcd,
+        count=circle.count,
+        hole_diameter=driver_diameter,
+        depth=depth,
+    )

@@ -114,8 +114,10 @@ def test_stock_baseline_matches_recorded_reference(stock, envelope):
     the baseline itself deserves a guard.
     """
     assert worst_case_j2(stock, samples=31).torques[1] == pytest.approx(15.36, abs=0.3)
+    # 4.0 kg of workpiece at the grasp point. This was 4.97 while the load
+    # was being applied at the gripper COM, 113 mm further inboard.
     capacity = max_payload(stock, RS06().peak_nm, max_arm=envelope, samples=31)
-    assert capacity == pytest.approx(4.97, abs=0.6)
+    assert capacity == pytest.approx(4.0, abs=0.6)
 
 
 def test_parity_limits_are_actually_binding():

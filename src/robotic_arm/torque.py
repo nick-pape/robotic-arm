@@ -167,12 +167,17 @@ def max_payload(
     """
     bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "gripper_end")
     original = float(model.body_mass[bid])
+    original_com = np.array(model.body_ipos[bid], dtype=float)
     data = mujoco.MjData(model)
     j2 = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "joint2")
     j3 = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "joint3")
 
     def worst(payload: float) -> float:
-        model.body_mass[bid] = original + payload
+        # Place the load at the grasp point, not at the gripper's COM: the two
+        # are 113 mm apart, and applying it at the COM understates the moment.
+        mass, com = with_payload(model, payload)
+        model.body_mass[bid] = mass
+        model.body_ipos[bid] = com
         out = 0.0
         for q2 in np.linspace(*model.jnt_range[j2], samples):
             for q3 in np.linspace(*model.jnt_range[j3], samples):
@@ -197,6 +202,7 @@ def max_payload(
         return low
     finally:
         model.body_mass[bid] = original
+        model.body_ipos[bid] = original_com
 
 
 def max_moment_arm(model: mujoco.MjModel, samples: int = 45) -> float:
@@ -212,3 +218,45 @@ def max_moment_arm(model: mujoco.MjModel, samples: int = 45) -> float:
             mujoco.mj_forward(model, data)
             out = max(out, j2_moment_arm(data, model))
     return out
+
+
+def grasp_point(model: mujoco.MjModel) -> tuple[int, np.ndarray]:
+    """(body id, point in that body's frame) where a payload actually hangs.
+
+    A grasped object sits between the fingers, not at the gripper's centre of
+    mass. That distinction is worth 113 mm of moment arm: `gripper_end`'s COM
+    is that far behind its tool origin, so adding payload as a bare mass bump
+    -- which leaves the COM untouched -- applies the load well inboard of where
+    it really acts and understates the shoulder moment.
+    """
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+
+    tool = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "gripper_end")
+    fingers = [
+        mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
+        for name in ("gripper_left", "gripper_right")
+    ]
+    fingers = [f for f in fingers if f >= 0]
+    if not fingers:
+        return tool, np.zeros(3)
+
+    world = np.mean([data.xpos[f] for f in fingers], axis=0)
+    rotation = data.xmat[tool].reshape(3, 3)
+    return tool, rotation.T @ (world - data.xpos[tool])
+
+
+def with_payload(model: mujoco.MjModel, payload: float) -> tuple[float, np.ndarray]:
+    """Combined mass and COM of the tool body carrying `payload`, in body frame.
+
+    Returned rather than applied, so callers can restore the original state.
+    The payload is treated as a point mass at the grasp point: its own inertia
+    about its centre is negligible beside the m*d^2 term at this lever arm.
+    """
+    tool, point = grasp_point(model)
+    base_mass = float(model.body_mass[tool])
+    base_com = np.array(model.body_ipos[tool], dtype=float)
+    if payload <= 0:
+        return base_mass, base_com
+    total = base_mass + payload
+    return total, (base_mass * base_com + payload * point) / total
