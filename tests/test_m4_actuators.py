@@ -66,20 +66,21 @@ def test_rs00_published_top_circle_is_confirmed():
     assert top.is_plausibly("M3")
 
 
-def test_rs00_published_bottom_circle_cannot_be_m3():
-    """Published: 'bottom 4x M3 on O38'. The BCD and count are right; M3 is not.
+def test_rs00_back_mount_disagrees_with_the_drawing():
+    """The O38 back-mount circle is an unresolved disagreement, not an erratum.
 
-    A O1.6 hole is an M2 tap drill or an M1.6 clearance hole. It cannot be any
-    kind of M3 -- an M3 tap drill is O2.5 and an M3 clearance hole O3.2-3.6.
-    Designing an M3 pattern against it yields a part that cannot be bolted on,
-    so this erratum is pinned rather than left as a footnote.
+    The vendor drawing specifies 4 x M3; the STEP shows 4 x O1.6 with a O2.5
+    counterbore. This records the discrepancy and the measured geometry, but
+    no longer claims the drawing is wrong -- a dimensioned installation
+    drawing outranks a feature inference, and O1.6 features could be pilot
+    holes or a stale STEP revision. Anything designed against this circle
+    follows the drawing until a physical motor is measured.
     """
     bottom = circles_by_bcd(RS00())[38.0]
     assert bottom.count == 4
     assert bottom.hole_diameter == pytest.approx(1.6, abs=0.01)
-    assert not bottom.is_plausibly("M3"), actuators.RS00_PUBLISHED_ERRATUM
     assert bottom.counterbore is not None
-    assert bottom.counterbore["diameter"] == pytest.approx(2.5, abs=0.01)
+    assert actuators.RS00_BACK_MOUNT_DISCREPANCY.startswith("Vendor drawing")
 
 
 def test_every_circle_is_evenly_spaced():

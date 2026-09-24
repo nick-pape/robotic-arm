@@ -48,6 +48,42 @@ def even_spacing(angles: list[float]) -> float | None:
     return gaps[0] if max(gaps) - min(gaps) < 0.5 else None
 
 
+def output_hub(shape, circle_plane_z: float) -> dict:
+    """The raised hub on the output face, which is what a link bolts onto.
+
+    This is the part of the actuator that actually rotates. It stands proud of
+    the stator face beside it, so a link must bear on the hub and be relieved
+    clear of the stator -- otherwise the printed part lands on a fixed face
+    and the joint binds. Measured rather than assumed: it is not in any
+    published figure.
+    """
+    import numpy as np
+
+    verts = np.array([[v.X, v.Y, v.Z] for v in shape.vertices()])
+    hub_face = float(verts[:, 2].min())
+    # Only the outermost face itself is the hub. Taking a wider band catches
+    # the stator flange behind it and reports the whole body as the hub.
+    band = verts[verts[:, 2] <= hub_face + 0.25]
+    if len(band) == 0:
+        return {}
+    radius = np.hypot(band[:, 0], band[:, 1])
+
+    # The stator face is where the body first exceeds the hub radius. Using
+    # "the next z step" instead picks up internal features and reports the hub
+    # as barely proud of anything.
+    hub_radius = float(radius.max())
+    all_radius = np.hypot(verts[:, 0], verts[:, 1])
+    wider = verts[all_radius > hub_radius + 1.0]
+    stator_face = float(wider[:, 2].min()) if len(wider) else hub_face
+
+    return {
+        "hub_diameter_mm": round(float(radius.max()) * 2, 2),
+        "hub_face_z_mm": round(hub_face, 2),
+        "stator_face_z_mm": round(stator_face, 2),
+        "hub_protrusion_mm": round(stator_face - hub_face, 2),
+    }
+
+
 def measure(path: Path) -> dict:
     shape = import_step(str(path))
     bbox = shape.bounding_box()
@@ -77,7 +113,10 @@ def measure(path: Path) -> dict:
         )
 
     patterns.sort(key=lambda p: p["bcd"])
+    output = min(patterns, key=lambda p: p["plane_z"]) if patterns else None
+    hub = output_hub(shape, output["plane_z"]) if output else {}
     return {
+        "output_hub": hub,
         "source_file": path.name,
         "volume_mm3": round(shape.volume, 3),
         "bbox_mm": {

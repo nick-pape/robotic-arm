@@ -239,3 +239,73 @@ def assembly_order() -> list[str]:
     from robotic_arm.parts import REGISTRY
 
     return [b for b in ("link2", "link3", "link4", "link5", "link6") if b in REGISTRY]
+
+
+def seated_actuator(body: str):
+    """The carried joint's actuator, positioned as it would be bolted on.
+
+    Datum is the **hub face**, not the bolt-circle plane. Those differ -- the
+    RS06's bolt circle sits 0.5 mm inside its hub face -- and using the wrong
+    one buries the hub in the printed part and reports interference that is an
+    artefact of the check rather than of the design.
+    """
+    import numpy as np
+    from build123d import Location, Plane, Vector, import_step
+
+    from robotic_arm.actuators import RS06, RS00
+    from robotic_arm.linkframes import link_frame
+    from robotic_arm.parts.cobot import boss_mount_face
+    from robotic_arm.reference import RS00_STEP, RS06_STEP, require
+    import importlib
+
+    from robotic_arm.parts import REGISTRY
+
+    module = importlib.import_module(REGISTRY[body][0].__module__)
+    if not hasattr(module, "_drums"):
+        return None
+
+    # The actuator this link's parent boss bolts onto is the one driving this
+    # link's own joint.
+    from robotic_arm.actuators import for_joint
+
+    joint = f"joint{body.removeprefix('link')}"
+    actuator = for_joint(joint)
+    step = RS06_STEP if actuator.name == "RS06" else RS00_STEP
+    solid = import_step(str(require(step)))
+
+    # Hub face is the outermost point along the actuator's own axis.
+    hub_face_z = solid.bounding_box().min.Z
+
+    frame = link_frame(body)
+    face = boss_mount_face(frame, module.PARENT_LENGTH, module.PARENT_PROTRUSION)
+    axis = np.asarray(frame.parent_axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+
+    # The actuator sits on the parent's side, so it extends *away* from this
+    # link's own body. Taking the direction from the raw axis gets that
+    # backwards on half the links, because the parent axes on this arm are
+    # not consistently signed -- the same trap that put link2's boss on the
+    # wrong side of its joint. Derive it from where the body actually is.
+    reach = float(np.asarray(frame.stock_centre, dtype=float) @ axis)
+    toward_body = axis * (1.0 if reach >= 0 else -1.0)
+    plane = Plane(origin=Vector(*face), z_dir=Vector(*(-toward_body)))
+    return plane * Location((0.0, 0.0, -hub_face_z)) * solid
+
+
+def actuator_interference(body: str) -> float:
+    """Volume of printed material occupying the same space as its actuator, mm3.
+
+    Checked against RobStride's own STEP rather than the stock arm's motor
+    meshes: the meshes measure about 82 mm across where the vendor body is
+    O57, and it is the vendor geometry we would actually bolt to.
+    """
+    from robotic_arm.parts import REGISTRY
+
+    motor = seated_actuator(body)
+    if motor is None:
+        return 0.0
+    overlap = REGISTRY[body][0]().intersect(motor)
+    if overlap is None:
+        return 0.0
+    pieces = overlap if hasattr(overlap, "__iter__") else [overlap]
+    return sum(float(s.volume) for piece in pieces for s in piece.solids())

@@ -28,6 +28,8 @@ from robotic_arm.parts.cobot import (
     housing_over,
     mating_face_opening,
     mount_face_ring,
+    solid_mount_end,
+    output_interface,
     bolt_ring,
     boss_centre,
     boss_mount_face,
@@ -45,6 +47,7 @@ BODY = "link5"
 #: on link4, so there is nothing to enclose here. Only the child drum houses an
 #: actuator.
 PARENT_LENGTH = 42.0
+PARENT_PROTRUSION = -STYLE.joint_gap / 2
 
 #: J6 drum, sized to enclose the RS00 that drives the tool flange. The
 #: actuator body is O57, so the shell clears it by a wall plus a running gap.
@@ -77,7 +80,7 @@ def _drums() -> tuple[Drum, Drum]:
     frame = link_frame(BODY)
     mount = RS00().output_circle
     parent = Drum(
-        centre=boss_centre(frame, PARENT_LENGTH, -STYLE.joint_gap / 2),
+        centre=boss_centre(frame, PARENT_LENGTH, PARENT_PROTRUSION),
         axis=frame.parent_axis,
         diameter=mount_boss_diameter(
             mount.bcd, RULES.m3_clearance, floor=BOSS_DIAMETER
@@ -181,6 +184,15 @@ def build_wrist_roll() -> Part:
     )
 
     # Seams at both rotating interfaces.
+    # Seat the mount face on the actuator's output hub, relieved clear of
+    # the stator beside it. Without this the boss lands on a fixed face and
+    # the joint binds.
+    relief = output_interface(
+        parent, boss_mount_face(frame, PARENT_LENGTH, PARENT_PROTRUSION), RS00()
+    )
+    if relief is not None:
+        part -= relief
+
     # Open the mating face. The child link's boss enters here, as does the
     # actuator output; a shelled drum caps both ends, and the closed cap is
     # what the child boss was punching through.

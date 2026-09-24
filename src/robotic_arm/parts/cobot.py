@@ -78,6 +78,28 @@ def tube(start: np.ndarray, end: np.ndarray, diameter: float) -> Part:
     return _oriented_cylinder(midpoint, delta / length, diameter / 2, length)
 
 
+def solid_mount_end(drum: Drum, mount_face: np.ndarray, thickness: float) -> Part:
+    """The cavity to *keep out* of a boss's mount end, so its cap stays thick.
+
+    The output relief is deeper than a wall-thickness cap, so cutting it into a
+    shelled boss removes the cap outside the hub diameter and leaves the
+    bearing pad floating. Welding a pad on afterwards produced degenerate
+    solids -- coincident faces -- so the cap is made thick where the cavity is
+    defined instead. The face that carries the joint load wants to be solid
+    regardless.
+    """
+    axis = np.asarray(drum.axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+    mount_face = np.asarray(mount_face, dtype=float)
+    inward = np.sign(float((np.asarray(drum.centre, float) - mount_face) @ axis)) or 1.0
+    return _oriented_cylinder(
+        mount_face + axis * inward * thickness / 2,
+        axis,
+        drum.diameter / 2 + 2.0,
+        thickness,
+    )
+
+
 def shelled_body(
     parent: Drum,
     child: Drum,
@@ -474,4 +496,66 @@ def access_ports(
         count=circle.count,
         hole_diameter=driver_diameter,
         depth=depth,
+    )
+
+
+def output_interface(
+    drum: Drum, mount_face: np.ndarray, actuator, clearance: float | None = None
+) -> Part:
+    """Relief so a link seats on the actuator's output hub, not on its stator.
+
+    This is the interface that actually carries the joint, and getting it wrong
+    is not subtle: an actuator's output is a raised hub -- O52 standing 1.5 mm
+    proud on the RS06, O34.6 by 0.4 mm on the RS00 -- carrying the bolt circle.
+    The wider face beside it is the **stator**, which does not rotate.
+
+    A flat printed boss pressed against both lands on the stator and the joint
+    binds. Earlier revisions did exactly that: the boss was O76 against a O52
+    hub, with no spigot, no relief and nothing locating it, so the parts did
+    not so much mount as sit alongside each other.
+
+    So the face is cut back everywhere outside the hub, by the hub's own
+    protrusion plus a running gap.
+    """
+    clearance = STYLE.joint_gap if clearance is None else clearance
+    if actuator.hub_diameter <= 0:
+        return None
+
+    axis = np.asarray(drum.axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+    mount_face = np.asarray(mount_face, dtype=float)
+    inward = np.sign(float((np.asarray(drum.centre, float) - mount_face) @ axis)) or 1.0
+
+    depth = actuator.hub_protrusion + clearance
+    outer = _oriented_cylinder(
+        mount_face + axis * inward * depth / 2, axis, drum.diameter / 2 + 2.0, depth
+    )
+    # Leave the bearing annulus over the hub itself.
+    inner = _oriented_cylinder(
+        mount_face + axis * inward * depth / 2,
+        axis,
+        actuator.hub_diameter / 2,
+        depth + 2.0,
+    )
+    return outer - inner
+
+
+def mount_flange(drum: Drum, mount_face: np.ndarray, thickness: float) -> Part:
+    """A solid pad at a boss's mount face, to union in before cutting relief.
+
+    A shelled drum ends in a wall-thickness cap, and the output relief is
+    deeper than that -- so cutting the relief straight into a shelled boss
+    removes the whole cap outside the hub diameter and leaves the bearing pad
+    floating as a separate solid. The face that carries the joint load needs to
+    be solid anyway.
+    """
+    axis = np.asarray(drum.axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+    mount_face = np.asarray(mount_face, dtype=float)
+    inward = np.sign(float((np.asarray(drum.centre, float) - mount_face) @ axis)) or 1.0
+    return _oriented_cylinder(
+        mount_face + axis * inward * thickness / 2,
+        axis,
+        drum.diameter / 2,
+        thickness,
     )

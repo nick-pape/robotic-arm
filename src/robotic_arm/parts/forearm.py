@@ -39,6 +39,8 @@ from robotic_arm.parts.cobot import (
     lofted_tube,
     mating_face_opening,
     mount_face_ring,
+    solid_mount_end,
+    output_interface,
     mount_boss_diameter,
     seam_groove,
     shell,
@@ -76,8 +78,13 @@ CHILD_LENGTH = 54.0
 #: that met link2's O92 housing as a cliff rather than a step.
 BOSS_DIAMETER = 60.0
 
+#:
+#: The first station is sized to clear the actuator, not for looks. A tube of
+#: O56 centred on the boss axis reaches 4 mm past the mount face on its
+#: upper surface -- straight into the motor's stator flange. Checked against
+#: RobStride's own STEP, O42 is the largest that clears.
 TUBE_STATIONS = (0.0, 0.5, 0.8, 0.95)
-TUBE_DIAMETERS = (56.0, 46.0, 50.0, 60.0)
+TUBE_DIAMETERS = (42.0, 46.0, 50.0, 60.0)
 
 CABLE_CHANNEL_DIAMETER = 12.0
 
@@ -201,6 +208,12 @@ def build_forearm() -> Part:
         + child.solid(child.diameter - 2 * wall, child.length - 2 * wall)
         + lofted_tube(points, [d - 2 * wall for d in diameters])
     )
+    # Keep the cavity clear of the mount end so its cap survives the relief.
+    inner -= solid_mount_end(
+        parent,
+        boss_mount_face(frame, PARENT_LENGTH, PARENT_PROTRUSION),
+        RS06().hub_protrusion + STYLE.joint_gap + RULES.structural_wall_thickness,
+    )
     part = shell(outer, inner)
 
     # No central bore: neither actuator is a hollow-shaft motor, so a
@@ -235,6 +248,15 @@ def build_forearm() -> Part:
         DRIVER_DIAMETER["M3"],
         depth=PARENT_LENGTH * 2,
     )
+
+    # Seat the mount face on the actuator's output hub, relieved clear of
+    # the stator beside it. Without this the boss lands on a fixed face and
+    # the joint binds.
+    relief = output_interface(
+        parent, boss_mount_face(frame, PARENT_LENGTH, PARENT_PROTRUSION), RS06()
+    )
+    if relief is not None:
+        part -= relief
 
     # Open the mating face. The child link's boss enters here, as does the
     # actuator output; a shelled drum caps both ends, and the closed cap is

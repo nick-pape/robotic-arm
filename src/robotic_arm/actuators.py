@@ -8,7 +8,8 @@ Two kinds of data meet here:
   ``scripts/measure_actuators.py`` and committed as
   ``reference/actuator_geometry.json``. It is measured rather than transcribed
   because the RS06 pattern is not published in any text form, and because the
-  published RS00 figures turned out to be wrong (see `RS00_PUBLISHED_ERRATUM`).
+  published RS00 back-mount figures disagree with it (see
+  `RS00_BACK_MOUNT_DISCREPANCY`).
 
 Keeping the actuator a parameter is a spec requirement: the DM variant uses
 different bolt circles, so printed motor pockets must be generated from this
@@ -28,15 +29,22 @@ GEOMETRY_JSON = (
     Path(__file__).resolve().parents[2] / "reference" / "actuator_geometry.json"
 )
 
-#: The manuals.plus transcription of the RS00 manual gives "bottom: 4x M3 on
-#: O38". The BCD is right; the thread size is not. Measured from the vendor
-#: STEP, that circle carries 4 x O1.6 holes with a O2.5 counterbore -- M1.6
-#: hardware, not M3. Recorded here because designing an M3 pattern against it
-#: would produce a part that cannot be bolted on.
-RS00_PUBLISHED_ERRATUM = (
-    "Published 'bottom 4x M3 on O38' is wrong on thread size: the O38 circle "
-    "is 4 x O1.6 with a O2.5 counterbore (M1.6). The O27 top circle (6 x M3) "
-    "is confirmed correct."
+#: An unresolved disagreement about the RS00's O38 back-mount circle, not an
+#: established erratum.
+#:
+#: The vendor installation drawing specifies 4 x M3 on O38. Feature
+#: recognition on the vendor STEP finds 4 x O1.6 holes with a O2.5
+#: counterbore on that circle, which cannot take an M3 under any reading.
+#:
+#: This previously asserted the drawing was wrong. That overstated the
+#: evidence: a dimensioned installation drawing is authoritative for
+#: installation, while O1.6 features could be pilot holes, assembly aids, or a
+#: STEP revision that does not match the shipping part. **Design to the
+#: drawing.** Settling it properly needs callipers on a real RS00.
+RS00_BACK_MOUNT_DISCREPANCY = (
+    "Vendor drawing specifies 4 x M3 on O38; the STEP shows 4 x O1.6 with a "
+    "O2.5 counterbore on that circle. Unresolved -- design to the drawing, "
+    "and measure a physical motor before relying on either."
 )
 
 
@@ -115,6 +123,9 @@ class Actuator:
     peak_current_apk: float
     bolt_circles: tuple[BoltCircle, ...] = ()
     bbox_mm: tuple[float, float, float] | None = None
+    #: The raised output hub: what a driven link actually bears on.
+    hub_diameter: float = 0.0
+    hub_protrusion: float = 0.0
 
     def derated_nm(self, factor: float = 0.7) -> float:
         """Continuous torque without the specified aluminium heat sink.
@@ -228,7 +239,10 @@ def get(name: str) -> Actuator:
         for c in geom.get("bolt_circles", ())
     )
     bbox = geom.get("bbox_mm")
+    hub = geom.get("output_hub") or {}
     return Actuator(
+        hub_diameter=float(hub.get("hub_diameter_mm", 0.0)),
+        hub_protrusion=float(hub.get("hub_protrusion_mm", 0.0)),
         name=name,
         bolt_circles=circles,
         bbox_mm=(bbox["x"], bbox["y"], bbox["z"]) if bbox else None,
