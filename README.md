@@ -22,10 +22,22 @@ committed — see `reference/PROVENANCE.md`.
 
 ```bash
 uv run pytest                          # verification suite
+uv run python -m robotic_arm.assembly  # bolt access per part
 uv run python -m robotic_arm.torque    # actuator torque budget
 uv run python -m robotic_arm.mjcf      # generate sim/model.xml
 python -m mujoco.viewer --mjcf=sim/model.xml
+
+# Design review images, into a gitignored renders/
+uv run --extra viz python scripts/snapshot.py --balancer     --focus link2,link3,link4,link5,link6
+uv run --extra viz python scripts/joint_sections.py
 ```
+
+The joint sections are the ones worth looking at first. An assembled-arm
+render cannot show where two parts meet, because the interface is inside the
+shell -- and that gap hid a real fault for several revisions, with the printed
+bosses seating on the actuators' stator faces instead of their rotating output
+hubs. Each section pairs a printed part with the real vendor actuator it bolts
+to and cuts the pair in half.
 
 ## Two sources of truth
 

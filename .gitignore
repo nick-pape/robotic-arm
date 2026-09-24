@@ -37,3 +37,6 @@ docs/*.mp4
 
 # Static design renders — regenerate: uv run --extra viz python scripts/snapshot.py
 renders/
+
+# Section mesh intermediates
+renders/section_meshes/
