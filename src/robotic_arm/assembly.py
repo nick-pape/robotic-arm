@@ -293,11 +293,18 @@ def seated_actuator(body: str):
 
 
 def actuator_interference(body: str) -> float:
-    """Volume of printed material occupying the same space as its actuator, mm3.
+    """Printed material overlapping its actuator *as this part intends to seat
+    it*, mm3.
 
-    Checked against RobStride's own STEP rather than the stock arm's motor
-    meshes: the meshes measure about 82 mm across where the vendor body is
-    O57, and it is the vendor geometry we would actually bolt to.
+    **This check is circular and proves very little on its own.** It places the
+    actuator on the printed part's own mount face, so the two can only touch,
+    never overlap: zero here means "the mount face and hub relief are
+    self-consistent", not "the part clears the motor". It reported zero for
+    link3 while link3's tube ran straight through the J3 motor.
+
+    Use `assembled_motor_interference` for the real question. This one is kept
+    because it does isolate one useful thing -- whether the hub relief is deep
+    enough for the seating the part was designed around.
     """
     from robotic_arm.parts import REGISTRY
 
@@ -309,3 +316,75 @@ def actuator_interference(body: str) -> float:
         return 0.0
     pieces = overlap if hasattr(overlap, "__iter__") else [overlap]
     return sum(float(s.volume) for piece in pieces for s in piece.solids())
+
+
+def assembled_motor_interference(body: str) -> dict:
+    """Printed material overlapping the motors where they actually sit, mm3.
+
+    `actuator_interference` is circular and must not be trusted on its own: it
+    *places* the actuator on the printed part's own mount face, so by
+    construction the two can only touch, never overlap. It reported zero for
+    link3 while link3's connecting tube ran straight through the J3 motor --
+    plainly visible in a render, invisible to the check.
+
+    This instead takes the motor geometry from the stock model at its real
+    assembled position and asks whether printed material is inside it. That is
+    the question the circular version was pretending to answer.
+    """
+    import mujoco
+    import numpy as np
+    from build123d import Location, Plane
+
+    from robotic_arm.linkframes import _quat2mat
+    from robotic_arm.mjcf import REPO, generate_twin, load
+    from robotic_arm.parts import REGISTRY
+    from robotic_arm.reference import load_baseline
+
+    stock = load_baseline()
+    twin = load(generate_twin(out=REPO / "sim" / "fitcheck.xml", visuals=False))
+    data = mujoco.MjData(twin)
+    data.qpos[:] = 0
+    mujoco.mj_forward(twin, data)
+
+    part = REGISTRY[body][0]()
+    bid = twin.body(body).id
+    rotation = data.xmat[bid].reshape(3, 3)
+    placed_part = part.moved(
+        Location(
+            Plane(
+                origin=tuple(data.xpos[bid] * 1000),
+                x_dir=tuple(rotation[:, 0]),
+                z_dir=tuple(rotation[:, 2]),
+            )
+        )
+    )
+
+    out = {}
+    for other in range(stock.nbody):
+        name = mujoco.mj_id2name(stock, mujoco.mjtObj.mjOBJ_BODY, other)
+        if name is None:
+            continue
+        for g in range(stock.ngeom):
+            if stock.geom_bodyid[g] != other or stock.geom_group[g] != 2:
+                continue
+            mesh = mujoco.mj_id2name(stock, mujoco.mjtObj.mjOBJ_MESH, stock.geom_dataid[g])
+            if not (mesh or "").startswith("motor"):
+                continue
+            # Sample the motor's vertices in world space and count how many
+            # land inside the printed solid. Cheaper and more robust than a
+            # boolean against a 20k-triangle mesh.
+            mid = stock.geom_dataid[g]
+            first, count = stock.mesh_vertadr[mid], stock.mesh_vertnum[mid]
+            local = (
+                stock.mesh_vert[first : first + count] @ _quat2mat(stock.geom_quat[g]).T
+                + stock.geom_pos[g]
+            )
+            obid = stock.body(name).id
+            world = (local @ data.xmat[obid].reshape(3, 3).T + data.xpos[obid]) * 1000
+            step = max(1, len(world) // 400)
+            inside = sum(
+                1 for p in world[::step] if placed_part.is_inside(tuple(p))
+            )
+            if inside:
+                out[mesh] = {"sampled": len(world[::step]), "inside": inside}
+    return out

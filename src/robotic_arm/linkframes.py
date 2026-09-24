@@ -329,3 +329,53 @@ def actuator_centre(name: str, near: np.ndarray | None = None) -> np.ndarray | N
             return None
         return (keep.min(axis=0) + keep.max(axis=0)) / 2
     return None
+
+
+def parent_actuator_face(name: str) -> float | None:
+    """Where the parent joint's actuator actually ends, along the link's own
+    parent axis, in millimetres.
+
+    This is the plane a link's mounting boss must sit on. It is *not* the joint
+    origin: the J3 motor reaches 6.4 mm past link3's origin, so a boss placed
+    on the joint plane is buried 7 mm inside the actuator and the connecting
+    tube passes straight through it.
+
+    Read from the stock model's own motor geometry, searching this link and its
+    parent -- the arm is not consistent about which body carries a given motor
+    mesh, so assuming either one gets it wrong half the time.
+    """
+    model = load_baseline()
+    bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, name)
+    if bid < 0:
+        raise KeyError(name)
+
+    frame = link_frame(name)
+    axis = np.asarray(frame.parent_axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+
+    candidates = []
+    for source in (bid, int(model.body_parentid[bid])):
+        offset = np.zeros(3)
+        if source != bid:
+            # Express the parent's geometry in this link's frame.
+            offset = -np.array(model.body_pos[bid], dtype=float) * M_TO_MM
+        for g in range(model.ngeom):
+            if model.geom_bodyid[g] != source or model.geom_group[g] != 2:
+                continue
+            mesh = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_MESH, model.geom_dataid[g])
+            if not (mesh or "").startswith("motor"):
+                continue
+            mid = model.geom_dataid[g]
+            first, count = model.mesh_vertadr[mid], model.mesh_vertnum[mid]
+            verts = (
+                model.mesh_vert[first : first + count]
+                @ _quat2mat(model.geom_quat[g]).T
+                + model.geom_pos[g]
+            ) * M_TO_MM + offset
+            # Only the cluster near this joint; a mesh may hold two motors.
+            near = verts[np.linalg.norm(verts, axis=1) < 140.0]
+            if len(near) == 0:
+                continue
+            candidates.append(float((near @ axis).max()))
+
+    return max(candidates) if candidates else None

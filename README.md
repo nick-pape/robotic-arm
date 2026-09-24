@@ -214,8 +214,13 @@ Still open, and blocking fabrication:
   link2 and link3 could not be reached from either direction; access ports
   through the opposite wall fixed it, and a test now requires every mount ring
   to have at least one working approach.
-- **Motor meshes still intersect the shells** (40-52 sampled vertices per
-  link), and the vendor envelope disagrees with the stock motor assets.
+- **Every printed part still intersects at least one motor** where the
+  motors actually sit -- worst is link4, with a quarter of motor_4's sampled
+  vertices inside it. The mount faces sit on the joint planes, but the
+  actuators do not end there: the J3 motor reaches 6.4 mm past link3's origin,
+  so link3's tube passes through it. Fixing it needs the motor-ownership
+  question settled, because the stock model is not consistent about which body
+  carries a given motor mesh.
 - Cable route is a side channel beside each actuator, but no harness
   routing, strain relief or connector access has been designed.
 - `structure.py` does not establish P3: it is a per-link cantilever, while P3
