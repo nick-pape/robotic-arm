@@ -1,4 +1,4 @@
-"""link4 -- the first wrist housing, J4 to J5.
+"""link1 -- the shoulder, between J1 and J2.
 
 Built by `urlink.build_ur_link`, the UR-style archetype every link on this arm
 shares::
@@ -6,13 +6,16 @@ shares::
     (=)  ================  [  M  ]
      rotor flange          stator housing
 
-The flange caps the previous joint's housing and bolts to its **rotor** ring;
-the housing encloses this link's own child motor and bolts to its **stator**
-ring. Both rings are on one face of a pancake actuator, so a joint is two
-links bolted to the same face at different radii, and the seam between flange
-and housing is the only thing visible from outside.
+The shoulder is the most compact link on the arm: J1 and J2 are only 78 mm
+apart and their axes are perpendicular, so two O94 barrels for two RS06s
+overlap heavily and merge into a single casting rather than being joined by
+any real length of tube. That is exactly what a UR5e's shoulder looks like,
+and why it is a short fat elbow rather than a tube.
 
-This link carries the RS00 that drives J5.
+This link carries the RS06 that drives J2 -- and it carries it on the
+*opposite* side from the stock arm. Stock mounts J2 backwards, putting link1
+on the rotor and making link2 carry two stators; this design follows the
+uniform UR convention instead. See `urlink.designed_motor_side`.
 """
 
 from __future__ import annotations
@@ -23,21 +26,16 @@ from robotic_arm.materials import PC_CF
 from robotic_arm.parts.urlink import build_ur_link, link_ends
 
 MATERIAL = PC_CF
-BODY = "link4"
+BODY = "link1"
 
-#: How far the rotor flange reaches into the link. The housing depth is not a
-#: constant: it is derived from the motor it has to enclose.
-FLANGE_LENGTH = 42.0
+#: Long enough that the two barrels actually intersect. They are 78 mm apart
+#: and each is O94, so anything shorter leaves them merely touching, which
+#: builds as two solids rather than one part.
+FLANGE_LENGTH = 48.0
 
-#: Tube profile between the two ends, as fractions of the run and diameters at
-#: each station.
 TUBE_STATIONS = (0.0, 0.5, 1.0)
-TUBE_DIAMETERS = (38.0, 36.0, 38.0)
-
-#: Slides the tube's target deeper into the housing. Aiming at the housing
-#: centre is right for an in-line joint and wrong for a perpendicular one,
-#: where it drives the tube through the joint bore.
-TUBE_END_OFFSET = 16.0
+TUBE_DIAMETERS = (44.0, 42.0, 44.0)
+TUBE_END_OFFSET = 0.0
 
 
 def _drums():
@@ -66,8 +64,8 @@ def collision_primitives() -> list:
     return proxies
 
 
-def build_wrist_pitch() -> Part:
-    """Return link4 as a solid, in its own frame."""
+def build_shoulder() -> Part:
+    """Return link1 as a solid, in its own frame."""
     return build_ur_link(
         BODY,
         FLANGE_LENGTH,
@@ -82,10 +80,9 @@ if __name__ == "__main__":
     from robotic_arm.massprops import mass_properties
     from robotic_arm.parts import effective_material
 
-    part = build_wrist_pitch()
+    part = build_shoulder()
     props = mass_properties(part, effective_material(part, MATERIAL))
     bb = part.bounding_box()
     print(f"solids {len(part.solids())}  volume {part.volume:,.0f} mm^3")
     print(f"mass   {props.mass * 1000:.1f} g  (stock {stock_mass(BODY) * 1000:.0f} g)")
     print(f"extent {[round(v, 1) for v in (bb.size.X, bb.size.Y, bb.size.Z)]} mm")
-    print(f"stock  {link_frame(BODY).stock_extent.round(1)} mm")

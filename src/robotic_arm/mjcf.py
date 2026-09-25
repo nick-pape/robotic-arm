@@ -272,11 +272,14 @@ def generate_twin(
     out: Path = SIM_MODEL,
     balancer: Balancer | None = None,
     visuals: bool = True,
+    per_link_colour: bool = False,
 ) -> Path:
     """The digital twin as currently designed: stock plus every printed part.
 
     `visuals` also swaps the rendered meshes, so the picture matches the
     physics. Turn it off to compare inertial effects alone.
+    `per_link_colour` tints each printed link differently, which is the only
+    practical way to see where one part stops and the next starts.
     """
     from robotic_arm.massprops import mass_properties
     from robotic_arm.parts import REGISTRY, effective_material
@@ -288,7 +291,7 @@ def generate_twin(
     overrides = cad_inertials(solids)
     apply_inertials(spec, overrides)
     if visuals:
-        apply_visual_meshes(spec, solids)
+        apply_visual_meshes(spec, solids, per_link_colour=per_link_colour)
     apply_collision_primitives(spec, cad_collision_primitives())
     if balancer is not None:
         add_to_spec(spec, balancer)
@@ -304,7 +307,25 @@ def generate_twin(
 MESH_DIR = SIM_DIR / "meshes"
 
 
-def apply_visual_meshes(spec: mujoco.MjSpec, solids: Mapping[str, object]) -> mujoco.MjSpec:
+#: One colour per printed link, for design review. A single grey makes it
+#: genuinely hard to see where one part ends and the next begins, which is how
+#: several joint faults survived a dozen renders.
+REVIEW_RGBA = {
+    "base_link": (0.55, 0.55, 0.60, 1.0),
+    "link1": (0.90, 0.45, 0.62, 1.0),
+    "link2": (0.85, 0.33, 0.28, 1.0),
+    "link3": (0.95, 0.70, 0.22, 1.0),
+    "link4": (0.35, 0.65, 0.40, 1.0),
+    "link5": (0.30, 0.55, 0.85, 1.0),
+    "link6": (0.65, 0.42, 0.80, 1.0),
+}
+
+
+def apply_visual_meshes(
+    spec: mujoco.MjSpec,
+    solids: Mapping[str, object],
+    per_link_colour: bool = False,
+) -> mujoco.MjSpec:
     """Repoint each named body's visual geom at its printed CAD geometry.
 
     Without this the twin would keep showing stock meshes while carrying CAD
@@ -358,7 +379,8 @@ def apply_visual_meshes(spec: mujoco.MjSpec, solids: Mapping[str, object]) -> mu
         keep.pos = np.zeros(3)
         keep.quat = np.array([1.0, 0.0, 0.0, 0.0])
         keep.material = ""  # drop the stock material so rgba takes effect
-        keep.rgba = np.array(PRINTED_RGBA, dtype=float)
+        rgba = REVIEW_RGBA.get(body_name, PRINTED_RGBA) if per_link_colour else PRINTED_RGBA
+        keep.rgba = np.array(rgba, dtype=float)
 
         # One printed solid replaces all the stock structure, so the remaining
         # structural meshes go. Hiding them in an undrawn group is not enough:

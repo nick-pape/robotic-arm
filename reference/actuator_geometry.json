@@ -2,11 +2,13 @@
   "_note": "Measured from RobStride vendor STEP files; see reference/PROVENANCE.md for pinned commits. Regenerate with scripts/measure_actuators.py. Coordinates are the STEP's own frame, millimetres.",
   "actuators": {
     "RS06": {
-      "output_hub": {
+      "mounting_face": {
         "hub_diameter_mm": 52.0,
         "hub_face_z_mm": -1.5,
-        "stator_face_z_mm": 0.0,
-        "hub_protrusion_mm": 1.5
+        "hub_protrusion_mm": 1.5,
+        "stator_inner_diameter_mm": 53.0,
+        "stator_outer_diameter_mm": 87.0,
+        "stator_face_z_mm": 0.0
       },
       "source_file": "RS06-new.step",
       "volume_mm3": 238549.345,
@@ -78,11 +80,13 @@
       ]
     },
     "RS00": {
-      "output_hub": {
+      "mounting_face": {
         "hub_diameter_mm": 34.64,
         "hub_face_z_mm": -5.4,
-        "stator_face_z_mm": -5.0,
-        "hub_protrusion_mm": 0.4
+        "hub_protrusion_mm": 0.4,
+        "stator_inner_diameter_mm": 36.0,
+        "stator_outer_diameter_mm": 57.0,
+        "stator_face_z_mm": -5.0
       },
       "source_file": "RS00.step",
       "volume_mm3": 127907.706,

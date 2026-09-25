@@ -114,10 +114,20 @@ def test_stock_baseline_matches_recorded_reference(stock, envelope):
     the baseline itself deserves a guard.
     """
     assert worst_case_j2(stock, samples=31).torques[1] == pytest.approx(15.36, abs=0.3)
-    # 4.0 kg of workpiece at the grasp point. This was 4.97 while the load
-    # was being applied at the gripper COM, 113 mm further inboard.
+    # 4.73 kg of workpiece at the grasp point.
+    #
+    # This figure has moved twice, and both moves were corrections rather than
+    # design changes. It was 4.97 while the load was applied at the gripper's
+    # COM, 113 mm inboard of where a grasped object actually hangs. It then
+    # read exactly 4.00 for two reasons that happened to agree: the load moved
+    # to the grasp point, and `max_payload`'s bisection was reading the tool
+    # mass it had itself just written, so every probe carried the sum of all
+    # previous probes. That second fault pinned the answer to 4.0000 kg for
+    # *any* arm able to hold 4 kg, which is why a clone 2.2 kg lighter
+    # appeared to gain nothing. With the probe state restored, stock reads
+    # 4.73 kg and the twin 5.23 kg.
     capacity = max_payload(stock, RS06().peak_nm, max_arm=envelope, samples=31)
-    assert capacity == pytest.approx(4.0, abs=0.6)
+    assert capacity == pytest.approx(4.73, abs=0.3)
 
 
 def test_parity_limits_are_actually_binding():

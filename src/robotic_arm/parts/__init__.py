@@ -11,10 +11,14 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from robotic_arm.materials import Material
+from robotic_arm.parts.base import MATERIAL as BASE_MATERIAL
+from robotic_arm.parts.base import build_base
 from robotic_arm.parts.forearm import MATERIAL as FOREARM_MATERIAL
 from robotic_arm.parts.upper_arm import MATERIAL as UPPER_ARM_MATERIAL
 from robotic_arm.parts.upper_arm import build_upper_arm
 from robotic_arm.parts.forearm import build_forearm
+from robotic_arm.parts.shoulder import MATERIAL as SHOULDER_MATERIAL
+from robotic_arm.parts.shoulder import build_shoulder
 from robotic_arm.parts.tool_flange import MATERIAL as TOOL_FLANGE_MATERIAL
 from robotic_arm.parts.tool_flange import build_tool_flange
 from robotic_arm.parts.wrist_pitch import MATERIAL as WRIST_PITCH_MATERIAL
@@ -25,6 +29,8 @@ from robotic_arm.parts.wrist_roll import build_wrist_roll
 #: MJCF body name -> (builder, material). Populated distal inwards as parts
 #: are designed; bodies absent here keep their stock inertials.
 REGISTRY: dict[str, tuple[Callable[[], object], Material]] = {
+    "base_link": (build_base, BASE_MATERIAL),
+    "link1": (build_shoulder, SHOULDER_MATERIAL),
     "link2": (build_upper_arm, UPPER_ARM_MATERIAL),
     "link3": (build_forearm, FOREARM_MATERIAL),
     "link4": (build_wrist_pitch, WRIST_PITCH_MATERIAL),
@@ -34,7 +40,9 @@ REGISTRY: dict[str, tuple[Callable[[], object], Material]] = {
 
 __all__ = [
     "REGISTRY",
+    "build_base",
     "build_forearm",
+    "build_shoulder",
     "build_upper_arm",
     "build_tool_flange",
     "build_wrist_pitch",

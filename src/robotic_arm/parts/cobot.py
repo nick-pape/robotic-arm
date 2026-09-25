@@ -559,3 +559,399 @@ def mount_flange(drum: Drum, mount_face: np.ndarray, thickness: float) -> Part:
         drum.diameter / 2,
         thickness,
     )
+
+
+#: Datum convention for a joint.
+#:
+#: The actuator's **rotor hub face sits on the joint plane** -- that is, on the
+#: child link's frame origin. Everything else follows: the motor body extends
+#: from there back into the parent, its stator flange sits one hub-protrusion
+#: behind the hub face, and the two links bolt onto those two faces
+#: concentrically.
+#:
+#: Fixing this datum is what makes the interfaces placeable at all. Without it
+#: each part guessed its own mount plane from the joint origin, which is where
+#: the actuator *starts*, not where it ends -- so bosses ended up buried inside
+#: the motors they were meant to bolt to.
+
+
+#: ISO 4762 socket-cap head across-corners for M3. Sets how far a cup's bore
+#: can open up before it starts eating its own bolt heads.
+M3_HEAD_DIAMETER = 5.5
+
+
+def carried_boss_diameter(actuator, clearance: float | None = None) -> float:
+    """The boss diameter the *child* link will present into this cup."""
+    return driven_boss(
+        (0.0, 0.0, 1.0), np.zeros(3), actuator, 1.0, clearance=clearance,
+        toward_body=(0.0, 0.0, 1.0),
+    ).diameter
+
+
+def driven_boss(axis, joint_plane, actuator, length: float, clearance: float | None = None,
+                toward_body=None):
+    """The driven link's half of a joint: a boss inside the stator ring.
+
+    Bolts to the rotor circle and bears on the hub face. Sized under the hub
+    so it can turn inside the other link's cup without rubbing -- the motor's
+    own radial gap is only 0.25 mm, which is fine for machined parts and not
+    for printed ones.
+    """
+    clearance = STYLE.joint_gap if clearance is None else clearance
+    axis = np.asarray(axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+    joint_plane = np.asarray(joint_plane, dtype=float)
+
+    # Wide enough for a driver to reach its own bolts. Sizing this purely to
+    # duck under the hub gave the RS00 links a O35 boss carrying a O27 bolt
+    # circle, where a O6 driver needs material out to r=16.5 -- so those bolts
+    # were drilled and could never be turned. The hub is not the real limit:
+    # the boss turns inside the *cup*, whose bore is ours to choose, and it
+    # only has to stay clear of the stator bolt heads.
+    from robotic_arm.assembly import DRIVER_DIAMETER
+
+    wall = RULES.structural_wall_thickness
+    diameter = max(
+        actuator.rotor_circle.bcd + DRIVER_DIAMETER["M3"] + 2 * wall,
+        actuator.hub_diameter - 2 * clearance,
+    )
+    headroom = actuator.stator_circle.bcd - M3_HEAD_DIAMETER - 4 * clearance
+    if diameter > headroom:
+        raise ValueError(
+            f"{actuator.name}: a O{diameter:.1f} boss would foul the stator "
+            f"bolt heads at O{actuator.stator_circle.bcd:.1f}"
+        )
+    # Extends away from the motor, into the link it drives. The direction has
+    # to be given rather than taken from the axis: parent axes on this arm are
+    # not consistently signed, and using the raw axis put link2's boss on the
+    # far side of its own joint.
+    if toward_body is None:
+        toward_body = -axis
+    toward_body = np.asarray(toward_body, dtype=float)
+    toward_body = toward_body / np.linalg.norm(toward_body)
+    return Drum(
+        centre=joint_plane + toward_body * length / 2,
+        axis=axis,
+        diameter=diameter,
+        length=length,
+    )
+
+
+def boss_direction(boss: Drum) -> np.ndarray:
+    """Unit vector from the joint plane into the body of the driven link.
+
+    `driven_boss` is built along a direction that is *not* always `+axis` --
+    parent axes on this arm are not consistently signed -- and the boss centre
+    is the only record of which way it went. Every feature cut into a boss has
+    to follow it. Reading the sign off the raw axis instead is the single most
+    repeated bug in this file: it has now put a boss, an access port, a seated
+    actuator and a bolt ring on the wrong side of their own joint.
+
+    The boss is placed against the joint plane at the origin, so the direction
+    is simply the direction of its centre.
+    """
+    centre = np.asarray(boss.centre, dtype=float)
+    length = float(np.linalg.norm(centre))
+    if length < 1e-9:
+        raise ValueError("boss is centred on its own joint plane; no direction")
+    return centre / length
+
+
+def carrying_cup(axis, joint_plane, actuator, length: float, clearance: float | None = None):
+    """The other half: a ring bolted to the stator, around the driven boss.
+
+    Bears on the stator flange, one hub-protrusion behind the hub face, and is
+    bored out to clear the rotor and the driven link turning inside it.
+    """
+    clearance = STYLE.joint_gap if clearance is None else clearance
+    axis = np.asarray(axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+    joint_plane = np.asarray(joint_plane, dtype=float)
+
+    # Sits on the far side of the joint plane from the driven link.
+    face = joint_plane + axis * actuator.hub_protrusion
+    # Two constraints, both previously missed. The cup must be wide enough
+    # that a driver port on the stator circle still leaves a full structural
+    # wall outside it -- at bcd + 10 the port broke out to within 2 mm of the
+    # surface -- and its *cavity* must clear the motor it skirts over. The
+    # second one is easy to forget because the cup looks generous from the
+    # outside: a O60 cup has a O56 cavity, and an RS00's stator flange is
+    # O57, so the motor rim sat inside the cup wall.
+    from robotic_arm.assembly import DRIVER_DIAMETER
+
+    wall = RULES.structural_wall_thickness
+    diameter = max(
+        actuator.stator_circle.bcd + DRIVER_DIAMETER["M3"] + 2 * wall,
+        actuator.stator_outer_diameter + 2 * clearance + 2 * wall,
+    )
+    return Drum(
+        centre=face + axis * length / 2,
+        axis=axis,
+        diameter=diameter,
+        length=length,
+    )
+
+
+def cup_bore(cup: Drum, actuator, clearance: float | None = None,
+             boss_diameter: float | None = None) -> Part:
+    """The opening through a carrying cup, as a solid to subtract.
+
+    Must clear the rotor hub *and* the driven link's boss turning inside it,
+    which is usually the larger of the two.
+    """
+    clearance = STYLE.joint_gap if clearance is None else clearance
+    diameter = max(
+        actuator.stator_inner_diameter,
+        actuator.hub_diameter + 2 * clearance,
+        boss_diameter + 2 * clearance if boss_diameter else 0.0,
+    )
+    return _oriented_cylinder(
+        np.asarray(cup.centre, dtype=float), cup.axis, diameter / 2, cup.length + 8.0
+    )
+
+
+def link_interfaces(body: str, boss_length: float, cup_length: float):
+    """Both ends of a link, each on whichever ring the stock arm puts it.
+
+    A link meets its own joint at one end and its child's joint at the other.
+    Which *ring* each end bolts to is measured, not assumed -- see
+    `robotic_arm.mounts`. The rule this code used to hardcode ("own end drives
+    off the rotor, child end carries the stator") holds at J3, J4 and J5 and
+    is wrong at J2: stock link2 carries the stators of both J2 and J3 and has
+    no driven boss at all.
+
+    * a **rotor** end is a driven boss -- small, inside the stator ring,
+      turning;
+    * a **stator** end is a carrying cup -- larger, bolted to the fixed
+      flange, bored to let the other side's hub turn through it.
+
+    Both sit against their joint planes, where the rotor hub faces are by the
+    datum convention above.
+    """
+    from robotic_arm.actuators import for_joint
+    from robotic_arm.linkframes import link_frame
+    from robotic_arm.mounts import child_joint_role, own_joint_role
+
+    frame = link_frame(body)
+    index = int(body.removeprefix("link"))
+
+    own = for_joint(f"joint{index}")
+    axis = np.asarray(frame.parent_axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+    reach = float(np.asarray(frame.stock_centre, dtype=float) @ axis)
+    into_body = axis * (1.0 if reach >= 0 else -1.0)
+
+    if own_joint_role(body) == "rotor":
+        boss = driven_boss(axis, np.zeros(3), own, boss_length,
+                           toward_body=into_body)
+    else:
+        # A stator end. The motor sits on this link's side of the plane, so
+        # the cup runs the same way a boss would -- into the body -- but it
+        # bolts to the outer ring and is bored for the hub turning inside it.
+        boss = carrying_cup(into_body, np.zeros(3), own, boss_length)
+
+    cup = None
+    carried = None
+    if frame.child_name and frame.child_name.startswith("link"):
+        child_index = int(frame.child_name.removeprefix("link"))
+        if child_index <= 6:
+            carried = for_joint(f"joint{child_index}")
+            child_axis = -np.asarray(frame.child_axis, dtype=float)
+            if child_joint_role(body) == "stator":
+                # The cup skirts back over the motor, which lies on this
+                # link's side of the child joint.
+                cup = carrying_cup(child_axis, frame.child_origin, carried,
+                                   cup_length)
+            else:
+                cup = driven_boss(child_axis, frame.child_origin, carried,
+                                  cup_length, toward_body=child_axis)
+    return boss, cup, own, carried
+
+
+def interface_role(body: str, end: str) -> str:
+    """"rotor" or "stator" for the named end of a link. `end` is own|child."""
+    from robotic_arm.mounts import child_joint_role, own_joint_role
+
+    return own_joint_role(body) if end == "own" else child_joint_role(body)
+
+
+def build_link(
+    body: str,
+    boss_length: float,
+    cup_length: float,
+    tube_stations: tuple[float, ...],
+    tube_diameters: tuple[float, ...],
+    wall: float | None = None,
+    tube_end_offset: float = 0.0,
+):
+    """A whole link: driven boss, carrying cup, tube between, properly bolted.
+
+    One builder rather than four near-copies. The four parts previously
+    repeated this sequence with small divergences, which is how the same fault
+    -- both interfaces bolted to inner rings -- ended up in all of them, and
+    how fixes landed in some and not others.
+    """
+    from robotic_arm.assembly import DRIVER_DIAMETER
+
+    wall = RULES.structural_wall_thickness if wall is None else wall
+    boss, cup, own, carried = link_interfaces(body, boss_length, cup_length)
+    if cup is None:
+        return None
+
+    # A tube wider than the interface it leaves is not a taper, it is a hole:
+    # the tube's *cavity* then exceeds the boss's outer diameter and eats its
+    # wall, severing the boss from the link. Caught here rather than left to
+    # surface as a mysterious extra solid.
+    if tube_diameters[0] > boss.diameter - wall:
+        raise ValueError(
+            f"{body}: tube starts at O{tube_diameters[0]:.0f} on a "
+            f"O{boss.diameter:.0f} boss; its cavity would cut the boss wall"
+        )
+    if tube_diameters[-1] > cup.diameter - wall:
+        raise ValueError(
+            f"{body}: tube ends at O{tube_diameters[-1]:.0f} on a "
+            f"O{cup.diameter:.0f} cup; its cavity would cut the cup wall"
+        )
+
+    # Where the tube aims. Aiming at the cup's centre is right for an in-line
+    # joint and wrong for a perpendicular one: on a wrist the tube then runs
+    # diagonally through the joint bore. `tube_end_offset` slides the target
+    # deeper into the cup, so the tube meets the housing's side and leaves the
+    # bore clear -- which is how a UR-style wrist is actually shaped.
+    cup_axis = np.asarray(cup.axis, float) / np.linalg.norm(cup.axis)
+    end = np.asarray(cup.centre, float) + cup_axis * tube_end_offset
+    start = np.asarray(boss.centre, float)
+    points = [start + (end - start) * f for f in tube_stations]
+
+    cup_out = -np.asarray(cup.axis, float) / np.linalg.norm(cup.axis)
+    mating_face = np.asarray(cup.centre, float) + cup_out * cup.length / 2
+    tube_solid = lofted_tube(points, list(tube_diameters))
+
+    outer = boss.solid() + cup.solid() + tube_solid
+    inner = (
+        boss.solid(boss.diameter - 2 * wall, boss.length - 2 * wall)
+        + cup.solid(cup.diameter - 2 * wall, cup.length - 2 * wall)
+        + lofted_tube(points, [d - 2 * wall for d in tube_diameters])
+    )
+    part = outer - inner
+
+    # Bore the cup so the motor it carries, and the link turning inside it,
+    # actually fit.
+    part -= cup_bore(cup, carried, boss_diameter=carried_boss_diameter(carried))
+
+    # This link's own end, on whichever ring the stock arm puts it. Placed
+    # along the end's own direction, not `-axis`: see `boss_direction`.
+    into = boss_direction(boss)
+    own_role = interface_role(body, "own")
+    own_circle = own.rotor_circle if own_role == "rotor" else own.stator_circle
+    if own_role == "stator":
+        # Bored for the other side's hub, which turns through it.
+        part -= cup_bore(boss, own, boss_diameter=carried_boss_diameter(own))
+    part -= bolt_ring(
+        centre=into * wall * 1.5,
+        axis=into,
+        bcd=own_circle.bcd,
+        count=own_circle.count,
+        hole_diameter=RULES.m3_clearance,
+        depth=wall * 4,
+    )
+    # Stator ring on the cup's mating face.
+    cup_face = np.asarray(cup.centre, float) - np.asarray(cup.axis, float) * cup.length / 2
+    part -= bolt_ring(
+        centre=cup_face + np.asarray(cup.axis, float) * wall * 1.5,
+        axis=cup.axis,
+        bcd=carried.stator_circle.bcd,
+        count=carried.stator_circle.count,
+        hole_diameter=RULES.m3_clearance,
+        depth=wall * 4,
+    )
+    # Driver access to the rotor bolts, but only where the boss has room for
+    # it. A O6 driver bore on a O27 circle needs wall out to r=16.5, which a
+    # O35 boss (wall from r=15.5) does not have -- cutting it anyway severs
+    # the boss from the rest of the link. Where there is no room the bolts are
+    # reached down the link's own hollow interior instead, and
+    # `assembly.reachable_directions` reports which links actually manage it
+    # rather than this assuming either way.
+    driver = DRIVER_DIAMETER["M3"]
+    if own_circle.bcd / 2 + driver / 2 <= boss.diameter / 2 - wall:
+        # From the far end down to the seating cap -- not through it. A port
+        # spanning the whole boss removes the very face the bolt head bears
+        # on, which reads as "reachable" while describing a screw with
+        # nothing to pull against.
+        part -= bolt_ring(
+            centre=into * (wall + boss.length) / 2,
+            axis=into,
+            bcd=own_circle.bcd,
+            count=own_circle.count,
+            hole_diameter=driver,
+            depth=boss.length - wall,
+        )
+
+    # The same port through the carrying cup. Without it the stator bolts were
+    # drilled into a blind annulus: modelled, cut, and unfastenable.
+    if carried.stator_circle.bcd / 2 + driver / 2 <= cup.diameter / 2 - wall:
+        part -= bolt_ring(
+            centre=cup_face + cup_axis * (wall + cup.length) / 2,
+            axis=cup_axis,
+            bcd=carried.stator_circle.bcd,
+            count=carried.stator_circle.count,
+            hole_diameter=driver,
+            depth=cup.length - wall,
+        )
+
+    # 5 mm back from the mating face, expressed along the drum's axis, which
+    # may point the opposite way to the boss.
+    facing = float(into @ (np.asarray(boss.axis, float)
+                           / np.linalg.norm(boss.axis)))
+    # Where the boss is wider than the hub it bears on, its rim would otherwise
+    # sweep the stator face -- only 0.4 mm behind the hub face on an RS00.
+    # Relieve it back to a clearance the joint can actually hold.
+    if own_role == "rotor" and boss.diameter > own.hub_diameter:
+        relief = own.hub_protrusion + STYLE.joint_gap
+        part -= (
+            _oriented_cylinder(into * relief / 2, into,
+                               (boss.diameter + 2.0) / 2, relief)
+            - _oriented_cylinder(into * relief / 2, into,
+                                 own.hub_diameter / 2, relief + 2.0)
+        )
+
+    part -= seam_groove(boss, offset_along_axis=facing * (-boss.length / 2 + 5.0))
+    part -= seam_groove(cup, offset_along_axis=-cup.length / 2 + 5.0)
+
+    part = break_edges(part)
+
+    # The joint bore must stay clear right through the mating face. Past that
+    # face is the *child* link, not the motor -- the motor sits inside the cup
+    # on this side -- so the local invariant is the bore, not the whole cup
+    # footprint. Clearance to the moving neighbour is a different question,
+    # answered over the full joint range in `robotic_arm.collision`, and
+    # probing at cup diameter here just re-asked it badly: it flagged link4's
+    # tube passing 31 mm off the joint axis as a collision.
+    bore = max(
+        carried.stator_inner_diameter,
+        carried.hub_diameter + 2 * STYLE.joint_gap,
+        carried_boss_diameter(carried) + 2 * STYLE.joint_gap,
+    )
+    probe = _oriented_cylinder(mating_face + cup_out * 15.0, cup_out, bore / 2, 30.0)
+    intrusion = part.intersect(probe)
+    intruding = 0.0
+    if intrusion is not None:
+        pieces = intrusion if hasattr(intrusion, "__iter__") else [intrusion]
+        for piece in pieces:
+            intruding += sum(float(x.volume) for x in piece.solids())
+    if intruding > 1.0:
+        raise ValueError(
+            f"{body}: {intruding:,.0f} mm^3 of the link blocks its own O"
+            f"{bore:.0f} joint bore past the cup's mating face; narrow "
+            f"tube_diameters[-1] (O{tube_diameters[-1]:.0f}) or pull the last "
+            f"station back"
+        )
+
+    if len(part.solids()) != 1:
+        volumes = sorted((float(x.volume) for x in part.solids()), reverse=True)
+        raise ValueError(
+            f"{body}: built {len(part.solids())} solids "
+            f"({', '.join(f'{v:,.0f}' for v in volumes)} mm^3); a link is one "
+            f"printed piece, so a second solid is loose geometry, not a part"
+        )
+    return part

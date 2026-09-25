@@ -172,40 +172,60 @@ if __name__ == "__main__":
 
 
 def mount_rings(body: str):
-    """(label, face point, axis, circle) for each mount ring on a printed part."""
+    """(label, face point, axis, circle) for each mount ring on a printed part.
+
+    The two rings are not the same kind of thing, and treating them as such is
+    what this function used to do: it fell back to a single RS00 output circle
+    for both rings on every part, so it checked access to a bolt circle that
+    exists on neither interface. A link's **boss** bolts to the rotor ring of
+    the joint that drives it; its **cup** bolts to the stator ring of the
+    joint it carries. Different actuators, different diameters, different
+    faces.
+    """
     import importlib
 
-    from robotic_arm.linkframes import link_frame
     from robotic_arm.parts import REGISTRY
+    from robotic_arm.parts.cobot import (
+        boss_direction,
+        interface_role,
+        link_interfaces,
+    )
 
     module = importlib.import_module(REGISTRY[body][0].__module__)
-    drums = getattr(module, "_drums", None)
-    if drums is None:
+    if not hasattr(module, "BOSS_LENGTH"):
         return []
 
-    frame = link_frame(body)
-    parent, child = drums()
-    out = []
-    for label, drum, towards in (
-        ("parent", parent, -np.asarray(parent.axis) * 1000.0),
-        ("child", child, np.asarray(frame.child_origin)),
-    ):
-        axis = np.asarray(drum.axis, dtype=float)
-        axis /= np.linalg.norm(axis)
-        a = np.asarray(drum.centre, float) - axis * drum.length / 2
-        b = np.asarray(drum.centre, float) + axis * drum.length / 2
-        face = a if np.linalg.norm(towards - a) < np.linalg.norm(towards - b) else b
+    boss, cup, own, carried = link_interfaces(
+        body, module.BOSS_LENGTH, module.CUP_LENGTH
+    )
+    if cup is None:
+        return []
 
-        if hasattr(module, "_mount_circle"):
-            circle = module._mount_circle()
-        elif hasattr(module, "_mount_circles"):
-            circle = module._mount_circles()[0 if label == "parent" else 1]
-        else:
-            from robotic_arm.actuators import RS00
+    # Measured at the **bolt head**, not the mating face. The screws are
+    # counterbored: they pass through a wall-thick seating cap and their heads
+    # sit on its far side. A corridor starting at the mating face therefore
+    # begins inside solid material by construction, and reported every ring on
+    # every part as unreachable no matter how much access was cut.
+    wall = RULES.structural_wall_thickness
 
-            circle = RS00().output_circle
-        out.append((label, face, axis, circle))
-    return out
+    into = boss_direction(boss)
+    own_circle = (
+        own.rotor_circle
+        if interface_role(body, "own") == "rotor"
+        else own.stator_circle
+    )
+    rings = [("parent", into * wall, into, own_circle)]
+
+    axis = np.asarray(cup.axis, dtype=float)
+    axis /= np.linalg.norm(axis)
+    face = np.asarray(cup.centre, float) - axis * cup.length / 2
+    child_circle = (
+        carried.rotor_circle
+        if interface_role(body, "child") == "rotor"
+        else carried.stator_circle
+    )
+    rings.append(("child", face + axis * wall, axis, child_circle))
+    return rings
 
 
 def reachable_directions(body: str) -> dict[str, list[int]]:
@@ -276,19 +296,20 @@ def seated_actuator(body: str):
     # Hub face is the outermost point along the actuator's own axis.
     hub_face_z = solid.bounding_box().min.Z
 
-    frame = link_frame(body)
-    face = boss_mount_face(frame, module.PARENT_LENGTH, module.PARENT_PROTRUSION)
-    axis = np.asarray(frame.parent_axis, dtype=float)
-    axis = axis / np.linalg.norm(axis)
+    from robotic_arm.parts.cobot import boss_direction, link_interfaces
 
-    # The actuator sits on the parent's side, so it extends *away* from this
-    # link's own body. Taking the direction from the raw axis gets that
-    # backwards on half the links, because the parent axes on this arm are
-    # not consistently signed -- the same trap that put link2's boss on the
-    # wrong side of its joint. Derive it from where the body actually is.
-    reach = float(np.asarray(frame.stock_centre, dtype=float) @ axis)
-    toward_body = axis * (1.0 if reach >= 0 else -1.0)
-    plane = Plane(origin=Vector(*face), z_dir=Vector(*(-toward_body)))
+    # By the datum convention the rotor hub face sits *on* the joint plane,
+    # which is this link's own origin -- so the seat needs no part-specific
+    # constants. It used to read PARENT_LENGTH/PARENT_PROTRUSION off the part
+    # module, which the redesign removed.
+    boss, _, _, _ = link_interfaces(body, module.BOSS_LENGTH, module.CUP_LENGTH)
+    face = np.zeros(3)
+
+    # The actuator extends *away* from this link's body, on the parent's side.
+    # `boss_direction` is the one record of which way that is: the parent axes
+    # on this arm are not consistently signed, and reading the sign off the
+    # raw axis gets it backwards on half the links.
+    plane = Plane(origin=Vector(*face), z_dir=Vector(*(-boss_direction(boss))))
     return plane * Location((0.0, 0.0, -hub_face_z)) * solid
 
 

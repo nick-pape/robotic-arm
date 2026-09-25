@@ -45,19 +45,34 @@ def test_joints_are_perpendicular(case):
     assert link_frame(body).axes_are_perpendicular
 
 
-def test_child_drum_encloses_its_actuator(case):
-    """Each wrist link carries the motor for the joint below it, so its child
-    drum has to clear that actuator's body plus a wall.
+def test_child_interface_bolts_to_the_stator_ring(case):
+    """The correction this test used to get backwards.
+
+    It previously asserted the child drum was wide enough to *enclose* an
+    actuator, which encoded the wrong model: a link does not wrap its child's
+    motor, it bolts to that motor's **stator ring** while the driven link bolts
+    to the rotor ring inside it. Both rings are on one face. Asserting
+    enclosure is how both interfaces ended up on inner rings.
     """
-    from robotic_arm.actuators import RS00
+    from robotic_arm.actuators import for_joint
+    from robotic_arm.linkframes import link_frame
 
     body, _, _ = case
     import importlib
 
     module = importlib.import_module(CASES[body][0].__module__)
-    _, child = module._drums()
-    actuator_diameter = max(RS00().bbox_mm[0], RS00().bbox_mm[1])
-    assert child.diameter >= actuator_diameter + 2 * RULES.structural_wall_thickness
+    _, cup = module._drums()
+
+    child = link_frame(body).child_name
+    carried = for_joint(f"joint{child.removeprefix('link')}")
+    ring = carried.stator_circle
+
+    assert cup.diameter > ring.bcd, (
+        f"{body} cup O{cup.diameter:.0f} cannot carry a O{ring.bcd:.0f} "
+        f"stator ring"
+    )
+    # And it must be bored clear of the hub turning inside it.
+    assert cup.diameter > carried.hub_diameter + 2 * RULES.structural_wall_thickness
 
 
 def test_wall_is_thick_enough_to_print():

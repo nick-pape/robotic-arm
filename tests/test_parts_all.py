@@ -72,25 +72,58 @@ def test_reaches_its_child_joint(part_case):
         pytest.skip(f"{frame.child_name} is a separate assembly, not spanned by stock")
     box = solid.bounding_box()
     child = frame.child_origin
-    assert box.min.X - 1.0 <= child[0] <= box.max.X + 1.0
-    assert box.min.Y - 1.0 <= child[1] <= box.max.Y + 1.0
-    assert box.min.Z - 1.0 <= child[2] <= box.max.Z + 1.0
+    # The housing mouth is deliberately recessed from the joint plane by the
+    # rotor's hub protrusion plus a seam gap, so the part stops a couple of
+    # millimetres short of the joint origin by design.
+    from robotic_arm.parts.urlink import SEAM_GAP
+
+    slack = 1.0 + SEAM_GAP + 2.0
+    assert box.min.X - slack <= child[0] <= box.max.X + slack
+    assert box.min.Y - slack <= child[1] <= box.max.Y + slack
+    assert box.min.Z - slack <= child[2] <= box.max.Z + slack
 
 
 def test_stays_within_the_stock_envelope(part_case):
     """Growing past stock risks occupying space stock leaves open, which shows
     up later as a self-collision stock does not have.
+
+    The bound is not stock's own extent, because stock keeps its links slim by
+    leaving the motors in open air between two fork plates. A cobot encloses
+    them, and an RS06 is O87 across its stator flange, so no housing that
+    actually contains one fits inside stock's O67 rings. Enclosing the motors
+    was the goal, so the floor here is what the motors demand and the
+    allowance above it is one housing radius -- enough for a barrel to stand
+    proud of where stock's bare motor already was, not enough to hide a part
+    that has quietly doubled.
+
+    This is a cheap proxy either way. The question it stands in for is asked
+    directly, over the whole joint range, in `test_s1_clearance.py`.
     """
+    import importlib
+
+    from robotic_arm.actuators import for_joint
+    from robotic_arm.parts import carried_actuator
+    from robotic_arm.parts.urlink import housing_diameter
+
     body, solid, _ = part_case
     size = solid.bounding_box().size
     stock = link_frame(body).stock_extent
+
+    module = importlib.import_module(REGISTRY[body][0].__module__)
+    floor = 0.0
+    if hasattr(module, "FLANGE_LENGTH"):
+        floor = housing_diameter(for_joint(f"joint{body.removeprefix('link')}"))
+    carried = carried_actuator(body)
+    if carried is not None and (hasattr(module, "FLANGE_LENGTH") or body == "base_link"):
+        floor = max(floor, housing_diameter(carried[0]))
+
     for ours, theirs in zip((size.X, size.Y, size.Z), stock):
         # A proportional limit alone is too tight on a thin feature: link6 is
-        # 12 mm against stock's 9.5, deliberately, to house M5 inserts. A few
-        # millimetres on a small dimension is not the kind of growth that
-        # causes collisions.
-        assert ours <= theirs * 1.12 + 3.0, (
-            f"{body}: {ours:.0f} mm against {theirs:.0f}"
+        # 12 mm against stock's 9.5, deliberately, to house M5 inserts.
+        allowed = max(float(theirs) * 1.12 + 3.0, max(float(theirs), floor) + floor / 2)
+        assert ours <= allowed, (
+            f"{body}: {ours:.0f} mm against stock {theirs:.0f} "
+            f"(allowed {allowed:.0f}, motor floor {floor:.0f})"
         )
 
 
@@ -104,22 +137,73 @@ def test_inertia_is_physically_realisable(part_case):
     assert props.satisfies_triangle_inequality()
 
 
-def test_parent_boss_is_not_an_actuator_housing(part_case):
-    """A joint's motor mounts on its parent link, so a link's own parent drum
-    has nothing to enclose. Sizing it to an actuator makes it fat enough to
-    fill space stock leaves open -- the cause of the only S1 regression found.
+def test_rotor_flange_matches_the_housing_it_caps(part_case):
+    """The inverse of what this test used to assert.
+
+    It previously required a link's own end to be *clearly smaller* than its
+    child housing, on the reasoning that "a link's own parent drum has nothing
+    to enclose". That was true of the old design and is the opposite of a
+    cobot: the rotor flange caps the parent's housing, so it matches that
+    housing's diameter exactly and the joint reads as one continuous cylinder.
+    Sizing it small is what made the arm look like brackets beside motors.
     """
+    from robotic_arm.actuators import for_joint
+    from robotic_arm.parts.urlink import housing_diameter
+
     body, _, _ = part_case
     import importlib
 
     module = importlib.import_module(REGISTRY[body][0].__module__)
     drums = getattr(module, "_drums", None)
     if drums is None:
-        pytest.skip("part is not built from drums")
-    parent, child = drums()
-    assert parent.diameter < child.diameter * 0.9, (
-        f"{body} parent boss O{parent.diameter:.0f} is not clearly smaller than "
-        f"its O{child.diameter:.0f} actuator housing"
+        pytest.skip("part is not built from a flange and a housing")
+    flange, _ = drums()
+    index = int(body.removeprefix("link"))
+    expected = housing_diameter(for_joint(f"joint{index}"))
+    assert flange.diameter == pytest.approx(expected, abs=0.01), (
+        f"{body} flange O{flange.diameter:.0f} does not match the O{expected:.0f} "
+        f"housing it caps"
+    )
+
+
+def test_flange_and_housing_sit_on_opposite_sides_of_their_joints(part_case):
+    """A link's two ends must reach in opposite directions from their own
+    joint planes, or one buries itself in the part it is supposed to meet.
+
+    Deriving each end's direction independently put link3's and link4's
+    flanges 14 mm inside the housings they capped, and the assembled render
+    could not show it -- from outside, a buried flange and a missing flange
+    look identical.
+    """
+    import mujoco
+    import numpy as np
+
+    from robotic_arm.parts.urlink import designed_motor_side, link_ends
+    from robotic_arm.reference import load_baseline
+
+    body, _, _ = part_case
+    import importlib
+
+    module = importlib.import_module(REGISTRY[body][0].__module__)
+    if not hasattr(module, "FLANGE_LENGTH"):
+        pytest.skip("part is not built from a flange and a housing")
+    flange, housing, _, _ = link_ends(body, module.FLANGE_LENGTH)
+    if housing is None:
+        pytest.skip("tip link carries no motor")
+
+    model = load_baseline()
+    data = mujoco.MjData(model)
+    data.qpos[:] = 0
+    mujoco.mj_forward(model, data)
+    rotation = data.xmat[model.body(body).id].reshape(3, 3)
+
+    index = int(body.removeprefix("link"))
+    own = designed_motor_side(f"joint{index}")
+    flange_world = rotation @ (
+        np.asarray(flange.axis, float) / np.linalg.norm(flange.axis)
+    )
+    assert float(flange_world @ own) < 0, (
+        f"{body}'s flange reaches toward its own motor instead of away from it"
     )
 
 
@@ -135,35 +219,12 @@ def test_whole_printed_assembly_saves_mass():
     assert total_new < total_stock * 0.4
 
 
-def test_parent_boss_sits_on_the_body_side_of_its_joint(part_case):
-    """A boss must overlap the space its own stock part occupies.
-
-    Parent axes on this arm are not consistently signed -- link2's points the
-    opposite way to link3's, link4's and link5's -- so writing a boss offset
-    against the raw axis places it on the wrong side for some links. That put
-    link2's shoulder boss 31 mm clear of its own joint and left a visible gap
-    in the render, while every number the suite checked stayed plausible.
-    """
-    body, _, _ = part_case
-    if not _is_shell_built(body):
-        pytest.skip("solid part has no parent boss")
-
-    import importlib
-
-    module = importlib.import_module(REGISTRY[body][0].__module__)
-    parent, _ = module._drums()
-    frame = link_frame(body)
-
-    axis = frame.parent_axis
-    boss_at = float(parent.centre @ axis)
-    half = parent.length / 2
-    stock_at = float(frame.stock_centre @ axis)
-    stock_half = float(abs(frame.stock_extent @ axis)) / 2
-
-    overlap = min(boss_at + half, stock_at + stock_half) - max(
-        boss_at - half, stock_at - stock_half
-    )
-    assert overlap > 0.6 * parent.length, (
-        f"{body} boss spans {boss_at - half:+.0f}..{boss_at + half:+.0f} along its "
-        f"axis but stock spans {stock_at - stock_half:+.0f}..{stock_at + stock_half:+.0f}"
-    )
+# `test_parent_boss_sits_on_the_body_side_of_its_joint` lived here. It required
+# a link's own end to overlap the space its stock part occupies, which was the
+# right check while that end was a boss reaching into the link. Under the UR
+# archetype the rotor flange deliberately reaches the other way -- out across
+# the joint plane, to cap the parent's housing -- so the old assertion is not
+# stale but backwards. What it guarded against, an end placed on the wrong
+# side of its own joint, is now covered by
+# `test_flange_and_housing_sit_on_opposite_sides_of_their_joints`, which tests
+# the relationship that matters rather than a proxy for it.

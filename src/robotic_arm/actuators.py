@@ -123,9 +123,11 @@ class Actuator:
     peak_current_apk: float
     bolt_circles: tuple[BoltCircle, ...] = ()
     bbox_mm: tuple[float, float, float] | None = None
-    #: The raised output hub: what a driven link actually bears on.
+    #: The mounting face: a turning hub inside a fixed annulus.
     hub_diameter: float = 0.0
     hub_protrusion: float = 0.0
+    stator_inner_diameter: float = 0.0
+    stator_outer_diameter: float = 0.0
 
     def derated_nm(self, factor: float = 0.7) -> float:
         """Continuous torque without the specified aluminium heat sink.
@@ -155,14 +157,21 @@ class Actuator:
         )
 
     @property
-    def output_circle(self) -> BoltCircle:
-        """The circle a driven link bolts to on this actuator's output face."""
-        return self.circle(*_OUTPUT_CIRCLE[self.name])
+    def rotor_circle(self) -> BoltCircle:
+        """Inner ring, on the turning hub. The **driven** link bolts here."""
+        return self.circle(*_ROTOR_CIRCLE[self.name])
 
     @property
-    def housing_circle(self) -> BoltCircle:
-        """The circle this actuator's own housing is bolted down by."""
-        return self.circle(*_HOUSING_CIRCLE[self.name])
+    def stator_circle(self) -> BoltCircle:
+        """Outer ring, on the fixed flange. The link **carrying** the motor
+        bolts here, surrounding the driven link concentrically."""
+        return self.circle(*_STATOR_CIRCLE[self.name])
+
+    # Kept as aliases: "output" and "housing" read as though they were on
+    # opposite ends of the motor, which is what led to both link interfaces
+    # being bolted to inner rings.
+    output_circle = rotor_circle
+    housing_circle = stator_circle
 
     def largest_circle(self) -> BoltCircle:
         """The mounting circle -- the widest, which carries the housing load."""
@@ -177,9 +186,15 @@ class Actuator:
 
 #: (bcd, count) identifying each named interface. Kept as data rather than
 #: inferred, because "largest" and "smallest" are not reliable descriptions:
-#: the RS06's output and its opposite face share a diameter.
-_OUTPUT_CIRCLE = {"RS06": (24.02, 6), "RS00": (27.0, 6)}
-_HOUSING_CIRCLE = {"RS06": (82.0, 8), "RS00": (50.0, 6)}
+#: the RS06's rotor ring and its opposite face share a diameter.
+#:
+#: Both rings sit on the **same** face. These are pancake actuators: the rotor
+#: hub turns in the middle, the stator flange around it does not, and each
+#: carries its own bolt circle. A joint is therefore two links bolted to one
+#: face, concentric -- the driven link inside, the link holding the motor
+#: outside.
+_ROTOR_CIRCLE = {"RS06": (24.02, 6), "RS00": (27.0, 6)}
+_STATOR_CIRCLE = {"RS06": (82.0, 8), "RS00": (50.0, 6)}
 
 
 # Vendor ratings, from RobStride's published specification table.
@@ -239,10 +254,12 @@ def get(name: str) -> Actuator:
         for c in geom.get("bolt_circles", ())
     )
     bbox = geom.get("bbox_mm")
-    hub = geom.get("output_hub") or {}
+    face = geom.get("mounting_face") or {}
     return Actuator(
-        hub_diameter=float(hub.get("hub_diameter_mm", 0.0)),
-        hub_protrusion=float(hub.get("hub_protrusion_mm", 0.0)),
+        hub_diameter=float(face.get("hub_diameter_mm", 0.0)),
+        hub_protrusion=float(face.get("hub_protrusion_mm", 0.0)),
+        stator_inner_diameter=float(face.get("stator_inner_diameter_mm", 0.0)),
+        stator_outer_diameter=float(face.get("stator_outer_diameter_mm", 0.0)),
         name=name,
         bolt_circles=circles,
         bbox_mm=(bbox["x"], bbox["y"], bbox["z"]) if bbox else None,

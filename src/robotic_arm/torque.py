@@ -173,6 +173,15 @@ def max_payload(
     j3 = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "joint3")
 
     def worst(payload: float) -> float:
+        # Restore before measuring. `with_payload` reads the tool's *current*
+        # mass as its base, and this function writes that mass -- so without
+        # the reset every probe in the bisection was loaded with the sum of
+        # all previous probes. The search then terminated at whatever dyadic
+        # value happened to pass first, returning exactly 4.0000 kg for any
+        # arm that could hold 4 kg, stock and twin alike, which is why the
+        # clone appeared to gain no payload from being 1.5 kg lighter.
+        model.body_mass[bid] = original
+        model.body_ipos[bid] = original_com
         # Place the load at the grasp point, not at the gripper's COM: the two
         # are 113 mm apart, and applying it at the COM understates the moment.
         mass, com = with_payload(model, payload)

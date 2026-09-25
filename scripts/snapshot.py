@@ -61,6 +61,11 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--balancer", action="store_true")
     parser.add_argument(
+        "--colour",
+        action="store_true",
+        help="tint each printed link differently for review",
+    )
+    parser.add_argument(
         "--focus",
         default="",
         help="comma-separated body names to add close-up views of",
@@ -72,7 +77,7 @@ def main() -> None:
     balancer = Balancer.sized_for(DEFAULT_CANCEL_NM) if args.balancer else None
     model = load(
         generate_scene(
-            generate_twin(out=REPO / "sim" / "snapshot_model.xml", balancer=balancer)
+            generate_twin(out=REPO / "sim" / "snapshot_model.xml", balancer=balancer, per_link_colour=args.colour)
         )
     )
     data = mujoco.MjData(model)

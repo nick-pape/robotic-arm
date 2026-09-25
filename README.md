@@ -55,10 +55,47 @@ transform and must not be compared against stock as though it were.
 
 ## Status
 
-Five printed parts are designed (link2-link6); link1 and base_link are still
-stock. **The design is not fabricable yet** -- an independent review
-(`docs/cobot-design-review.md`) found reproducible assembly interferences and
-unusable mounting features. See "Known defects" below.
+**All seven structural parts are now designed** (base_link, link1-link6) on a
+single UR5e-style archetype. Goal: look and assemble like a UR5e, using the
+same RobStride actuators, with stock-equivalent performance.
+
+Every link is the same shape::
+
+    (=)  ================  [  M  ]
+     rotor flange          stator housing
+
+The flange caps the previous joint's housing and bolts to its **rotor** ring;
+the housing encloses this link's own child motor and bolts to its **stator**
+ring. Both rings are on one face of a pancake actuator, so a joint is two
+links bolted to the same face at different radii, and the seam between flange
+and housing is all that shows from outside. Housing diameters come from the
+motors, not from taste: an RS06 is O87 across its flange, so no housing that
+actually encloses one can be slimmer than O94.
+
+### Measured against the stock arm
+
+| | stock | twin | |
+|---|---|---|---|
+| total mass | 6.01 kg | 3.81 kg | **-36.6%** |
+| reach | 778.72 mm | 778.72 mm | identical |
+| payload, 70% envelope | 4.72 kg | 5.22 kg | **+10.6%** |
+| worst J2 torque | 15.36 N*m | 12.99 N*m | -15.4% |
+| every segment length | | | identical to 0.000000 mm |
+
+Reproduce with `uv run python scripts/compare_performance.py`. Reach and
+segment lengths *must* be identical, because the generator may not touch
+joint frames (F2); any difference there is a defect, not a design choice.
+Payload improves because the arm carries 2.2 kg less of itself. Printed
+structure is 836 g against 5208 g of stock structure.
+
+The cost is clearance. Stock keeps its links slim by leaving the motors
+bare between two fork plates; enclosing an O87 RS06 needs an O94 housing,
+3.5 mm fatter in every radial direction than the motor already sitting
+there. 68 of 2000 sampled poses are clear on stock and collide on the
+twin, worst -5.2 mm. Slimming the barrels took that from 114 poses and
+-6.1 mm; the rest is inherent, and the ways out are a thinner wall, a
+smaller actuator, or reduced joint limits. Tracked as a strict xfail in
+`tests/test_s1_clearance.py`.
 
 | Milestone | State |
 |---|---|
@@ -70,8 +107,8 @@ unusable mounting features. See "Known defects" below.
 | M5 CAD→MJCF generator | done — path proven end to end, F2 enforced |
 | M6 J2 balancer | done — sized by optimisation |
 | M7 thermal and current limits | done |
-| link2-link6 printed | designed; interfaces not yet buildable |
-| link1, base_link | not started |
+| base_link, link1-link6 printed | designed on the UR5e archetype; performance validated |
+| link1, base_link | done |
 
 ## What the real inertials say
 
@@ -192,6 +229,19 @@ Also fixed:
 - **Mounting cuts removed 0 mm3.** They were placed from constants while the
   housings had since been moved onto their motors. Now derived from the
   drums' actual faces; they remove ~112 mm3 each.
+- **Parent axes on this arm are not consistently signed** ((0,0,-1) on some
+  links, (0,0,+1) on others), and deriving a direction from the raw axis has
+  now put a boss, an access port, a seated actuator and two bolt rings on the
+  wrong side of their own joint -- five separate times, each found by a render
+  or a test rather than by reading the code. Direction is now taken from
+  `cobot.boss_direction`, which reads it off the geometry that was actually
+  built.
+- **A tube wider than its cup bulged out through the mating face.** link2's
+  O58 tube was centred in a 36 mm cup, so it protruded 6 mm past the face; the
+  bore then clipped the protrusion and left a floating chip of a second solid.
+  Cups are now at least as long as the tube is wide (which also makes them
+  cover the motors properly), `build_link` refuses to return more than one
+  solid, and a probe rejects anything blocking the joint bore.
 - **Housing mating faces were capped**, so the child link's boss punched
   through them. Opened to clear the child's boss plus a running gap.
 
@@ -209,18 +259,33 @@ Still open, and blocking fabrication:
   exactly" claim was an artefact of the 113 mm error. With the 0.8 kg gripper
   counted, total at the tool is 4.8 kg against the advertised 5 -- consistent,
   but the quoting convention is an assumption, so it is not validation.
-- ~~No bolt access~~ **fixed.** `assembly.py` checks whether a driver can
-  reach each fastener along its own axis. Four of six parent-mount bolts on
-  link2 and link3 could not be reached from either direction; access ports
-  through the opposite wall fixed it, and a test now requires every mount ring
-  to have at least one working approach.
-- **Every printed part still intersects at least one motor** where the
-  motors actually sit -- worst is link4, with a quarter of motor_4's sampled
-  vertices inside it. The mount faces sit on the joint planes, but the
-  actuators do not end there: the J3 motor reaches 6.4 mm past link3's origin,
-  so link3's tube passes through it. Fixing it needs the motor-ownership
-  question settled, because the stock model is not consistent about which body
-  carries a given motor mesh.
+- **The flange and housing each derived their own direction**, so at J3 and J4 the flange extended the *same* way as the parent's housing and sat 14 mm inside it -- which is why the elbow rendered as an open cylinder with the motor visible. J5 looked right only because link4's housing was independently wrong in the same direction, two errors cancelling. Both ends now derive from one measured fact, which side the motor slug sits on, so they are opposite by construction.
+- **Stock's fork told us nothing about the motor interface.** Its rings bolt at O54 to the plate-to-plate standoff collar, not to the actuator; the RS06 has no O54 circle. The vendor STEP is the only authority for the bolt patterns.
+- ~~No bolt access~~ **fixed, then found to have been measuring nothing.**
+  `mount_rings` had gone stale against the redesign: with no part still
+  exposing `_mount_circle`, it fell back to a single RS00 O27 circle for both
+  rings on every part -- a bolt circle that exists on neither interface. It
+  now reads the actual rotor and stator circles, and measures from the **bolt
+  head** rather than the mating face, since the screws are counterbored and a
+  corridor starting at the mating face begins inside material by construction.
+  Against the real rings, three further defects surfaced and were fixed: the
+  cup had no driver port at all, both ports cut away the very cap the bolt
+  head bears on, and the RS00 links' O35 boss was too narrow to admit a driver
+  to its own O27 bolt circle. All four links now have both rings reachable.
+- **Every printed part still intersects at least one motor** where the motors
+  actually sit: link2 29, link3 45, link4 59, link5 41, link6 7 sampled
+  vertices, down from 260 total before the redesign. Tracked as a strict
+  xfail, with a per-part ratchet test so the numbers cannot drift -- the
+  previous record claimed exactly that and was never read, so the redesign
+  moved all five while the stale figures sat unchallenged.
+- **`max_payload` was silently wrong**, and it underpins requirement P2. Its
+  bisection read the tool mass *it had just written* as the base for the next
+  probe, so every trial carried the sum of all previous trials. The search
+  then stopped at whatever dyadic value passed first and returned exactly
+  4.0000 kg for any arm that could hold 4 kg -- stock and twin alike, which is
+  why a clone 2.2 kg lighter appeared to gain no payload at all. Fixed by
+  restoring the tool state before each probe; stock reads 4.73 kg and the twin
+  5.23 kg.
 - Cable route is a side channel beside each actuator, but no harness
   routing, strain relief or connector access has been designed.
 - `structure.py` does not establish P3: it is a per-link cantilever, while P3

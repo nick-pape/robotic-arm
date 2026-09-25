@@ -48,39 +48,46 @@ def even_spacing(angles: list[float]) -> float | None:
     return gaps[0] if max(gaps) - min(gaps) < 0.5 else None
 
 
-def output_hub(shape, circle_plane_z: float) -> dict:
-    """The raised hub on the output face, which is what a link bolts onto.
+def mounting_face(shape) -> dict:
+    """The joint interface: two concentric annular faces on one end.
 
-    This is the part of the actuator that actually rotates. It stands proud of
-    the stator face beside it, so a link must bear on the hub and be relieved
-    clear of the stator -- otherwise the printed part lands on a fixed face
-    and the joint binds. Measured rather than assumed: it is not in any
-    published figure.
+    These are pancake actuators, and both links bolt to the **same** face. The
+    centre is the rotor hub, which turns; the annulus around it is the stator
+    flange, which does not. Each carries its own bolt ring, so one link goes on
+    the inside and the other on the outside, concentric, with the motor's own
+    radial gap between them.
+
+    Missing this is what made the printed links wrong: both of their interfaces
+    were bolted to inner rings, so nothing ever held a stator.
+
+    Bands are read directly off the solid, because no published figure gives
+    the hub diameter or the stator flange's inner edge.
     """
     import numpy as np
 
     verts = np.array([[v.X, v.Y, v.Z] for v in shape.vertices()])
-    hub_face = float(verts[:, 2].min())
-    # Only the outermost face itself is the hub. Taking a wider band catches
-    # the stator flange behind it and reports the whole body as the hub.
-    band = verts[verts[:, 2] <= hub_face + 0.25]
-    if len(band) == 0:
-        return {}
-    radius = np.hypot(band[:, 0], band[:, 1])
+    z = verts[:, 2]
+    radius = np.hypot(verts[:, 0], verts[:, 1])
 
-    # The stator face is where the body first exceeds the hub radius. Using
-    # "the next z step" instead picks up internal features and reports the hub
-    # as barely proud of anything.
-    hub_radius = float(radius.max())
-    all_radius = np.hypot(verts[:, 0], verts[:, 1])
-    wider = verts[all_radius > hub_radius + 1.0]
-    stator_face = float(wider[:, 2].min()) if len(wider) else hub_face
+    hub_face_z = float(z.min())
+    hub = radius[z <= hub_face_z + 0.25]
+    hub_diameter = float(hub.max()) * 2
+
+    # The stator face is the next distinct plane outboard of the hub radius.
+    wider = verts[radius > hub_diameter / 2 + 0.2]
+    if len(wider) == 0:
+        return {}
+    stator_face_z = float(wider[:, 2].min())
+    ring = wider[wider[:, 2] <= stator_face_z + 0.25]
+    ring_radius = np.hypot(ring[:, 0], ring[:, 1])
 
     return {
-        "hub_diameter_mm": round(float(radius.max()) * 2, 2),
-        "hub_face_z_mm": round(hub_face, 2),
-        "stator_face_z_mm": round(stator_face, 2),
-        "hub_protrusion_mm": round(stator_face - hub_face, 2),
+        "hub_diameter_mm": round(hub_diameter, 2),
+        "hub_face_z_mm": round(hub_face_z, 2),
+        "hub_protrusion_mm": round(stator_face_z - hub_face_z, 2),
+        "stator_inner_diameter_mm": round(float(ring_radius.min()) * 2, 2),
+        "stator_outer_diameter_mm": round(float(ring_radius.max()) * 2, 2),
+        "stator_face_z_mm": round(stator_face_z, 2),
     }
 
 
@@ -113,10 +120,8 @@ def measure(path: Path) -> dict:
         )
 
     patterns.sort(key=lambda p: p["bcd"])
-    output = min(patterns, key=lambda p: p["plane_z"]) if patterns else None
-    hub = output_hub(shape, output["plane_z"]) if output else {}
     return {
-        "output_hub": hub,
+        "mounting_face": mounting_face(shape),
         "source_file": path.name,
         "volume_mm3": round(shape.volume, 3),
         "bbox_mm": {
