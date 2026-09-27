@@ -40,7 +40,7 @@ ADVERTISED_MAX_KG = 5.0
 def segment_lengths(model) -> dict[str, float]:
     """Distance between consecutive body origins, in mm."""
     data = mujoco.MjData(model)
-    data.qpos[:] = 0
+    data.qpos[:] = model.qpos0
     mujoco.mj_forward(model, data)
     out = {}
     for parent, child in zip(CHAIN, CHAIN[1:]):
@@ -50,17 +50,30 @@ def segment_lengths(model) -> dict[str, float]:
     return out
 
 
-def reach(model, samples: int = 41) -> float:
-    """Furthest the tool centre gets from the J1 axis, in mm."""
+def reach(model, samples: int = 13) -> float:
+    """Furthest the tool centre gets from the J1 axis, in mm.
+
+    Sweeps J2 through J5, not just J2 and J3. Pinning the wrist at zero is not
+    a reach measurement, it is a measurement of one pose of the wrist, and the
+    difference is not small: it reads this twin 96 mm short of what it can
+    actually reach, because its wrist offset lies along a rotary axis that a
+    q4=0 sweep never turns into the radial direction. That error very nearly
+    cost the design an extra 180 mm of link4 chasing reach it already had.
+
+    J1 is skipped because it rotates the whole arm about the axis being
+    measured from, and J6 because it is a roll about the tool axis.
+    """
+    import itertools
+
     data = mujoco.MjData(model)
     best = 0.0
-    for q2 in np.linspace(*model.jnt_range[1], samples):
-        for q3 in np.linspace(*model.jnt_range[2], samples):
-            data.qpos[:] = 0
-            data.qpos[1], data.qpos[2] = q2, q3
-            mujoco.mj_forward(model, data)
-            tcp = data.body("gripper_end").xpos
-            best = max(best, float(np.hypot(tcp[0], tcp[1])))
+    grids = [np.linspace(*model.jnt_range[i], samples) for i in (1, 2, 3, 4)]
+    for q in itertools.product(*grids):
+        data.qpos[:] = model.qpos0
+        data.qpos[1:5] = q
+        mujoco.mj_forward(model, data)
+        tcp = data.body("gripper_end").xpos
+        best = max(best, float(np.hypot(tcp[0], tcp[1])))
     return best * 1000.0
 
 

@@ -15,11 +15,15 @@ flange caps it and the seam sits where the base stops turning.
 from __future__ import annotations
 
 import numpy as np
-from build123d import Box, Part, Pos
+from build123d import Box, Cone, Part, Pos
 
 from robotic_arm.design import RULES
 from robotic_arm.materials import PC_CF
-from robotic_arm.parts.urlink import housing_bore, stator_housing
+from robotic_arm.parts.urlink import (
+    MOTOR_PLANE_OFFSET,
+    flange_relief_depth,
+    housing_bore,
+)
 
 MATERIAL = PC_CF
 BODY = "base_link"
@@ -33,21 +37,57 @@ PLATE_THICKNESS = 8.0
 MOUNT_INSET = 18.0
 MOUNT_HOLE = 6.6  # M6 clearance
 
+#: The flare from plate to column. A UR5e's base is a truncated cone, not a
+#: plain cylinder, and the difference is not decoration: with a straight
+#: column the grey reads as another arm segment competing with the shoulder
+#: above it, which is why link1 looked like a thin washer squeezed between
+#: two cylinders. Flaring the base makes it read as a base.
+#:
+#: The draft is about 21 degrees from vertical, so it prints without support.
+#: The footprint and bolt pattern are left at stock so the arm still drops
+#: onto the same fixture.
+CONE_BASE_DIAMETER = 124.0
+CONE_TOP = 30.0
 
-def _housing():
+
+def _seat():
+    """(rotor flange drum, J1 actuator, direction) for the base.
+
+    base_link holds no motor. The J1 RS06 lives in **link1**, which sheathes
+    it, and the base is only what a UR5e's base is: a small flare presenting
+    that joint's rotor. So this is a flange, not a housing.
+
+    It sits at the motor's own plane rather than the joint origin --
+    `urlink.MOTOR_PLANE_OFFSET` seats J1's motor 35 mm low so link1's barrel
+    clears link2's, which is what lets the base be a flare instead of a
+    full-height column. Sliding a motor along its own rotation axis changes no
+    kinematics.
+    """
     from robotic_arm.actuators import for_joint
     from robotic_arm.linkframes import link_frame
+    from robotic_arm.parts.urlink import (
+        housing_diameter,
+        joint_motor_side,
+        rotor_flange,
+    )
 
     frame = link_frame(BODY)
     plane = np.asarray(frame.child_origin, dtype=float)
-    # Into the base, which is the only direction there is.
-    axis = -np.asarray(frame.child_axis, dtype=float)
-    axis = axis / np.linalg.norm(axis)
     actuator = for_joint("joint1")
-    # Reach from the joint plane right down to the plate, so the column is
-    # continuous rather than a barrel perched on a stalk.
-    length = float(plane @ -axis) - PLATE_THICKNESS
-    return stator_housing(axis, plane, actuator, length), actuator, axis
+    side = np.asarray(joint_motor_side("joint1"), dtype=float)
+    plane = plane + side * MOTOR_PLANE_OFFSET["joint1"]
+    # The flange reaches away from the motor, down toward the plate.
+    away = -side
+    # Height of the seat above the top of the flare. Projected onto `side`
+    # (which points up, toward the motor), not onto `away`, or it comes out
+    # negative and the drum fails to construct.
+    length = float(plane @ side) - CONE_TOP
+    return rotor_flange(away, plane, actuator, length), actuator, away
+
+
+def _housing():
+    """Kept as the name the rest of the project reaches for."""
+    return _seat()
 
 
 def collision_primitives() -> list:
@@ -62,21 +102,51 @@ def build_base() -> Part:
     from robotic_arm.parts.cobot import _oriented_cylinder, bolt_ring, break_edges
 
     wall = RULES.structural_wall_thickness
-    housing, actuator, axis = _housing()
+    seat, actuator, away = _seat()
 
     plate = Pos(0, 0, PLATE_THICKNESS / 2) * Box(PLATE_X, PLATE_Y, PLATE_THICKNESS)
-    part = (housing.solid() + plate) - housing.solid(
-        housing.diameter - 2 * wall, housing.length - 2 * wall
+
+    # Flared skirt from the plate up to the seat, hollow so it costs almost
+    # nothing: a solid cone here would outweigh the whole shell.
+    rise = CONE_TOP - PLATE_THICKNESS
+    flare = Pos(0, 0, PLATE_THICKNESS + rise / 2) * Cone(
+        bottom_radius=CONE_BASE_DIAMETER / 2,
+        top_radius=seat.diameter / 2,
+        height=rise,
+    )
+    hollow = Pos(0, 0, PLATE_THICKNESS + rise / 2) * Cone(
+        bottom_radius=CONE_BASE_DIAMETER / 2 - wall,
+        top_radius=seat.diameter / 2 - wall,
+        height=rise,
     )
 
-    # The joint opening and the ring the J1 stator bolts into.
-    mouth = np.asarray(housing.centre, float) - axis * housing.length / 2
-    part -= _oriented_cylinder(mouth, axis, housing_bore(actuator) / 2, 4 * wall)
+    relief = flange_relief_depth(actuator, wall)
+    part = (seat.solid() + plate + flare) - (
+        _oriented_cylinder(
+            np.asarray(seat.centre, float) + away * relief / 2,
+            away,
+            (seat.diameter - 2 * wall) / 2,
+            seat.length - 2 * wall - relief,
+        )
+        + hollow
+    )
+
+    # Bolt to the J1 rotor, and relieve outside the hub it bears on so the
+    # base clears link1's mouth cap.
+    face = np.asarray(seat.centre, float) - away * seat.length / 2
+    part -= (
+        _oriented_cylinder(
+            face + away * relief / 2, away, (seat.diameter + 2.0) / 2, relief
+        )
+        - _oriented_cylinder(
+            face + away * relief / 2, away, actuator.hub_diameter / 2, relief + 2.0
+        )
+    )
     part -= bolt_ring(
-        centre=mouth + axis * wall / 2,
-        axis=axis,
-        bcd=actuator.stator_circle.bcd,
-        count=actuator.stator_circle.count,
+        centre=face + away * wall / 2,
+        axis=away,
+        bcd=actuator.rotor_circle.bcd,
+        count=actuator.rotor_circle.count,
         hole_diameter=RULES.m3_clearance,
         depth=wall * 3,
     )

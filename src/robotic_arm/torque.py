@@ -65,6 +65,14 @@ def worst_case_j2(model: mujoco.MjModel | None = None, samples: int = 121) -> To
     J2 is the binding joint: it carries the whole distal chain on the longest
     moment arm. Sweeping J2 x J3 is sufficient because the wrist joints move
     too little mass to shift the shoulder moment appreciably.
+
+    The unswept joints are held at `qpos0`, not at zero. Those are the same
+    thing only while every joint's `ref` is zero, and this arm's are not: it
+    is re-zeroed so all-zeros stands it upright (see `homepose`). Zeroing
+    `qpos` would therefore hold the twin's wrist upright and the stock arm's
+    wrist somewhere else, and then compare the two -- worth 0.3 kg of
+    apparent payload difference that is purely an artefact of the convention.
+    `qpos0` means "every joint at its own neutral" on any model.
     """
     model = model if model is not None else load_baseline()
     j2 = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "joint2")
@@ -73,7 +81,7 @@ def worst_case_j2(model: mujoco.MjModel | None = None, samples: int = 121) -> To
     best: TorquePose | None = None
     for q2 in np.linspace(*model.jnt_range[j2], samples):
         for q3 in np.linspace(*model.jnt_range[j3], samples):
-            qpos = np.zeros(model.nq)
+            qpos = model.qpos0.copy()
             qpos[1], qpos[2] = q2, q3
             pose = gravity_torques(model, qpos)
             if best is None or pose.torques[1] > best.torques[1]:
@@ -190,7 +198,7 @@ def max_payload(
         out = 0.0
         for q2 in np.linspace(*model.jnt_range[j2], samples):
             for q3 in np.linspace(*model.jnt_range[j3], samples):
-                data.qpos[:] = 0
+                data.qpos[:] = model.qpos0
                 data.qpos[1], data.qpos[2] = q2, q3
                 mujoco.mj_forward(model, data)
                 if max_arm is not None and j2_moment_arm(data, model) > max_arm:
@@ -222,7 +230,7 @@ def max_moment_arm(model: mujoco.MjModel, samples: int = 45) -> float:
     out = 0.0
     for q2 in np.linspace(*model.jnt_range[j2], samples):
         for q3 in np.linspace(*model.jnt_range[j3], samples):
-            data.qpos[:] = 0
+            data.qpos[:] = model.qpos0
             data.qpos[1], data.qpos[2] = q2, q3
             mujoco.mj_forward(model, data)
             out = max(out, j2_moment_arm(data, model))

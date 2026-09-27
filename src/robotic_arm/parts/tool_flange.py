@@ -59,47 +59,81 @@ OUTER_DIAMETER = 57.0
 #: Deeper than stock's 10 mm, to take an 8 mm M6 insert under the spigot recess.
 THICKNESS = 12.0
 
+#: The collar that actually caps link5's housing. It matches that barrel's
+#: outside diameter, so the joint reads as one continuous cylinder with a
+#: hairline seam rather than a recessed puck.
+#:
+#: Without it this part was a plain O57 disc against a O64 barrel mouth,
+#: leaving a 3.5 mm annular ledge of open housing rim exposed all the way
+#: round -- 665 mm2 of link5's mouth face uncovered, plus a 1 mm axial gap of
+#: which 0.6 mm was bare motor. That is the dark band at the wrist.
+COLLAR_DIAMETER = 64.0
+COLLAR_LENGTH = 8.0
+
 #: Cable pass-through. The wrist carries gripper power and CAN through the
 #: hollow shaft, so this clears a connector, not just wires.
-BORE_DIAMETER = 18.0
+#:
+#: Was O18, which left only 1.25 mm between the bore and the motor
+#: counterbores -- below the 2.0 mm structural wall, and the thinnest section
+#: in the part.
+BORE_DIAMETER = 16.5
 
 TOOL_BCD = 44.0
 TOOL_BOLT_COUNT = 4
 TOOL_THREAD = "M5"
 TOOL_INSERT_DEPTH = 7.0
 
-#: Counterbore sinking each M3 motor-bolt head below the tool face.
+#: Counterbore sinking each M3 motor-bolt head below the tool face. Deep
+#: enough that the bolt spans only the collar, so a stock M3 x 10 reaches the
+#: rotor rather than needing a special length for the whole 20 mm stack.
 MOTOR_CBORE_DIAMETER = 6.5
-MOTOR_CBORE_DEPTH = 3.5
+MOTOR_CBORE_DEPTH = 10.0
 
 
 def build_tool_flange() -> Part:
     """Return the tool flange as a solid, in link6's frame."""
     motor = _motor_mount_circle()
 
+    from robotic_arm.parts.urlink import flange_relief_depth
+
+    relief = flange_relief_depth(RS00())
+    total = COLLAR_LENGTH + THICKNESS
+
     with BuildPart() as flange:
-        # A cobot flange is a disc and should read as one -- no webs or
+        # The collar that caps link5's barrel, then the tool boss on top of
+        # it. A cobot flange is a disc and should read as one -- no webs or
         # lightening, which at this depth would cost more stiffness than the
         # grams they save.
         Cylinder(
-            radius=OUTER_DIAMETER / 2,
-            height=THICKNESS,
+            radius=COLLAR_DIAMETER / 2,
+            height=COLLAR_LENGTH,
             align=(Align.CENTER, Align.CENTER, Align.MIN),
         )
+        with BuildSketch(Plane.XY.offset(COLLAR_LENGTH)):
+            Circle(OUTER_DIAMETER / 2)
+        extrude(amount=THICKNESS)
+
+        # Relieve everything outside the rotor hub this bears on, so the
+        # collar clears link5's mouth cap -- which now reaches onto this side
+        # of the stator face so its own bolts can go in.
+        with BuildSketch(Plane.XY):
+            Circle(COLLAR_DIAMETER / 2 + 1.0)
+            Circle(RS00().hub_diameter / 2, mode=Mode.SUBTRACT)
+        extrude(amount=relief, mode=Mode.SUBTRACT)
 
         # Central cable bore, through everything. Doubles as the tool pilot.
         with BuildSketch(Plane.XY):
             Circle(BORE_DIAMETER / 2)
-        extrude(amount=THICKNESS, mode=Mode.SUBTRACT)
+        extrude(amount=total, mode=Mode.SUBTRACT)
 
         # Motor-side clearance holes on the measured RS00 output circle, each
         # counterbored so its head sits below the tool mating face.
         with BuildSketch(Plane.XY):
             with PolarLocations(motor.bcd / 2, motor.count):
                 Circle(RULES.m3_clearance / 2)
-        extrude(amount=THICKNESS, mode=Mode.SUBTRACT)
+        extrude(amount=total, mode=Mode.SUBTRACT)
 
-        with BuildSketch(Plane.XY.offset(THICKNESS)):
+        with BuildSketch(Plane.XY.offset(total)):
             with PolarLocations(motor.bcd / 2, motor.count):
                 Circle(MOTOR_CBORE_DIAMETER / 2)
         extrude(amount=-MOTOR_CBORE_DEPTH, mode=Mode.SUBTRACT)
@@ -107,7 +141,7 @@ def build_tool_flange() -> Part:
         # Tool-side inserts, on their own bolt circle clear of the motor
         # counterbores at every angle.
         insert_hole, _ = RULES.boss_for(TOOL_THREAD)
-        with BuildSketch(Plane.XY.offset(THICKNESS)):
+        with BuildSketch(Plane.XY.offset(total)):
             with PolarLocations(TOOL_BCD / 2, TOOL_BOLT_COUNT):
                 Circle(insert_hole / 2)
         extrude(amount=-TOOL_INSERT_DEPTH, mode=Mode.SUBTRACT)
@@ -119,6 +153,7 @@ def build_tool_flange() -> Part:
             e
             for e in flange.edges().filter_by(GeomType.CIRCLE)
             if abs(e.radius - OUTER_DIAMETER / 2) < 1e-6
+            or abs(e.radius - COLLAR_DIAMETER / 2) < 1e-6
         ]
         fillet(rim, radius=STYLE.edge_break)
 
@@ -133,10 +168,10 @@ def collision_primitives() -> list:
 
     return [
         CollisionCylinder(
-            centre=np.array([0.0, 0.0, THICKNESS / 2]),
+            centre=np.array([0.0, 0.0, (COLLAR_LENGTH + THICKNESS) / 2]),
             axis=np.array([0.0, 0.0, 1.0]),
-            radius=OUTER_DIAMETER / 2,
-            length=THICKNESS,
+            radius=COLLAR_DIAMETER / 2,
+            length=COLLAR_LENGTH + THICKNESS,
         )
     ]
 
@@ -185,7 +220,8 @@ def interface_clearance() -> dict[str, float]:
         - STYLE.edge_break,
         "bore_to_counterbore": (r_motor - MOTOR_CBORE_DIAMETER / 2)
         - BORE_DIAMETER / 2,
-        "remaining_floor_under_counterbore": THICKNESS - MOTOR_CBORE_DEPTH,
+        "remaining_floor_under_counterbore": COLLAR_LENGTH + THICKNESS
+        - MOTOR_CBORE_DEPTH,
     }
 
 

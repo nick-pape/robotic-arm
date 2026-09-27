@@ -67,11 +67,21 @@ def section(body: str, out_dir: Path) -> Path | None:
 
     # Keep the joint end of the link only; the rest is a long tube that would
     # shrink the interface to nothing.
-    axis = np.asarray(frame.parent_axis, dtype=float)
-    axis = axis / np.linalg.norm(axis)
-    reach = float(np.asarray(frame.stock_centre, dtype=float) @ axis)
-    toward_body = axis * (1.0 if reach >= 0 else -1.0)
-    window = Pos(*(toward_body * WINDOW / 3)) * Box(WINDOW, WINDOW, WINDOW)
+    # Anchored on the rotor flange, which is inside the part by construction
+    # and sits right at the joint plane -- so the window always straddles the
+    # seam, with the flange on one side and the motor it caps on the other.
+    # Positioning it from the stock body instead (what this did while the
+    # link's own end was a boss reaching inward) lands it on empty space on
+    # some links, and the cut then returns an empty compound.
+    import importlib
+
+    from robotic_arm.parts.urlink import link_ends
+
+    module = importlib.import_module(REGISTRY[body][0].__module__)
+    flange, _, _, _ = link_ends(body, module.FLANGE_LENGTH)
+    window = Pos(*np.asarray(flange.centre, dtype=float)) * Box(
+        WINDOW, WINDOW, WINDOW
+    )
 
     # Cut away everything on one side of the plane through the joint axis.
     half = Pos(0, -CUT_SIZE / 2, 0) * Box(CUT_SIZE, CUT_SIZE, CUT_SIZE)

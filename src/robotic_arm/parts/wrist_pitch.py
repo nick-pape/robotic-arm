@@ -1,18 +1,33 @@
-"""link4 -- the first wrist housing, J4 to J5.
+"""link4 -- the first wrist section, J4 to J5.
 
-Built by `urlink.build_ur_link`, the UR-style archetype every link on this arm
-shares::
+A **tee**, matching the UR e-Series wrist: the J5 barrel is the run and the
+J4 rotor flange is a branch off its cylindrical side.
 
-    (=)  ================  [  M  ]
-     rotor flange          stator housing
+That shape is only available because the J4 and J5 axes **intersect**. Stock
+leaves them 87 mm apart -- the reBot is planar and the UR is not -- so a link
+spanning them could only ever be a rod raked across two skew axes, meeting
+neither square. `JOINT_SHIFT` removes the 87 mm; see `linkframes`.
 
-The flange caps the previous joint's housing and bolts to its **rotor** ring;
-the housing encloses this link's own child motor and bolts to its **stator**
-ring. Both rings are on one face of a pancake actuator, so a joint is two
-links bolted to the same face at different radii, and the seam between flange
-and housing is the only thing visible from outside.
+Removing it costs reach, and this link buys that back, which is why the run
+is long. The two directions are not interchangeable:
 
-This link carries the RS00 that drives J5.
+* the **branch** lies along the J4 axis. J2, J3 and J4 are all parallel, so
+  no joint on the arm can turn a vector along that axis toward the radial
+  direction -- it only ever adds in quadrature against a ~700 mm lever.
+  Measured, 112 mm of extra branch bought 33 mm of reach. So the branch is
+  held at 42 mm, the shortest that still reads as a tee.
+* the **run** lies along the J5 axis, perpendicular to those three, so it
+  rotates into the radial direction and pays about 0.63 mm of reach per mm.
+
+At a 177 mm run the arm reaches 785.9 mm against stock's 783.9 -- parity to
+0.3% -- while J4->J5 grows to 181.9 mm from stock's 104.0. That segment is
+the one deliberate departure; every other segment matches stock to 0.08 mm.
+
+The barrel only has to **contain** the branch, not centre it, so it is
+177 + 40 mm rather than twice the run. That 40 mm overshoot past the branch
+axis is what makes the corner an elbow instead of a tangency.
+
+link4 bolts to the J4 rotor at the branch and carries the J5 motor in the run.
 """
 
 from __future__ import annotations
@@ -25,29 +40,31 @@ from robotic_arm.parts.urlink import build_ur_link, link_ends
 MATERIAL = PC_CF
 BODY = "link4"
 
-#: How far the rotor flange reaches into the link. The housing depth is not a
-#: constant: it is derived from the motor it has to enclose.
+#: The branch, out-of-plane and therefore worthless for reach: the shortest
+#: that still reads as a tee. 32 mm of it is buried in the run, leaving a
+#: 10 mm stub proud of the barrel.
 FLANGE_LENGTH = 42.0
 
-#: Tube profile between the two ends, as fractions of the run and diameters at
-#: each station.
-TUBE_STATIONS = (0.0, 0.5, 1.0)
-TUBE_DIAMETERS = (38.0, 36.0, 38.0)
+#: The run: the 177 mm that carries J5 out to reach parity, plus 40 mm of
+#: overshoot past the branch axis so the corner blends. The RS00 needs only
+#: 55 mm of this; the rest is structure.
+BARREL_LENGTH = 80.0
 
-#: Slides the tube's target deeper into the housing. Aiming at the housing
-#: centre is right for an in-line joint and wrong for a perpendicular one,
-#: where it drives the tube through the joint bore.
-TUBE_END_OFFSET = 16.0
+#: link4 is a **tee**: the J4 and J5 barrels touch and fuse, so there is no
+#: tube between them at all and `build_ur_link` omits one. These remain
+#: because the builder still takes a profile.
+TUBE_STATIONS = (0.0, 0.5, 1.0)
+TUBE_DIAMETERS = (44.0, 44.0, 44.0)
 
 
 def _drums():
     """(rotor flange, stator housing) for this link."""
-    flange, housing, _, _ = link_ends(BODY, FLANGE_LENGTH)
+    flange, housing, _, _ = link_ends(BODY, FLANGE_LENGTH, BARREL_LENGTH)
     return flange, housing
 
 
 def collision_primitives() -> list:
-    """Collision proxy: one cylinder per end, plus the tube between."""
+    """Collision proxy: one cylinder per barrel, plus one per elbow segment."""
     import numpy as np
 
     from robotic_arm.parts.cobot import CollisionCylinder
@@ -57,9 +74,8 @@ def collision_primitives() -> list:
         CollisionCylinder.from_drum(flange),
         CollisionCylinder.from_drum(housing),
     ]
-    axis = np.asarray(housing.axis, float)
     start = np.asarray(flange.centre, float)
-    end = np.asarray(housing.centre, float) + axis / np.linalg.norm(axis) * TUBE_END_OFFSET
+    end = np.asarray(housing.centre, float)
     points = [start + (end - start) * f for f in TUBE_STATIONS]
     for a, b, da, db in zip(points, points[1:], TUBE_DIAMETERS, TUBE_DIAMETERS[1:]):
         proxies.append(CollisionCylinder.from_span(a, b, max(da, db)))
@@ -73,7 +89,7 @@ def build_wrist_pitch() -> Part:
         FLANGE_LENGTH,
         TUBE_STATIONS,
         TUBE_DIAMETERS,
-        tube_end_offset=TUBE_END_OFFSET,
+        housing_length=BARREL_LENGTH,
     )
 
 

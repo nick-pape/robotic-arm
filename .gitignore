@@ -41,3 +41,6 @@ renders/
 # Section mesh intermediates
 renders/section_meshes/
 prints/
+
+# MuJoCo writes this next to the working directory on every viewer launch
+MUJOCO_LOG.TXT

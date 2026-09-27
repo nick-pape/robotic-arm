@@ -1,21 +1,20 @@
-"""link1 -- the shoulder, between J1 and J2.
+"""link1 -- the shoulder column, between J1 and J2.
 
-Built by `urlink.build_ur_link`, the UR-style archetype every link on this arm
-shares::
+A tall vertical barrel holding the J1 motor, with a short pad on its side that
+J2's rotor bolts to. The barrel is the part; the pad is a detail on it.
 
-    (=)  ================  [  M  ]
-     rotor flange          stator housing
+That arrangement is measured, not styled. UR publish CAD for the e-Series, and
+in it the base-joint barrel carries a flat boss the full barrel diameter
+standing only ~1.9 mm proud of its side, against which the next barrel's
+output face butts -- separated by the black seam ring, with essentially zero
+overlap. The shoulder is an **L of two barrels that meet**, not a T of two
+that fuse, and the vertical barrel slightly overshoots the horizontal one's
+crown.
 
-The shoulder is the most compact link on the arm: J1 and J2 are only 78 mm
-apart and their axes are perpendicular, so two O94 barrels for two RS06s
-overlap heavily and merge into a single casting rather than being joined by
-any real length of tube. That is exactly what a UR5e's shoulder looks like,
-and why it is a short fat elbow rather than a tube.
-
-This link carries the RS06 that drives J2 -- and it carries it on the
-*opposite* side from the stock arm. Stock mounts J2 backwards, putting link1
-on the rotor and making link2 carry two stators; this design follows the
-uniform UR convention instead. See `urlink.designed_motor_side`.
+link1 owns the J1 motor. That is also measured: UR put the base-joint module
+in the piece *above* it, so the module turns and its output bolts back down
+into the fixed pedestal, leaving the base a small flare. `mounts` finds the
+same arrangement in this arm's own stock geometry.
 """
 
 from __future__ import annotations
@@ -28,40 +27,44 @@ from robotic_arm.parts.urlink import build_ur_link, link_ends
 MATERIAL = PC_CF
 BODY = "link1"
 
-#: Long enough that the two barrels actually intersect. They are 78 mm apart
-#: and each is O94, so anything shorter leaves them merely touching, which
-#: builds as two solids rather than one part.
-FLANGE_LENGTH = 48.0
+#: The branch of the tee, reaching across to M2.
+#:
+#: Stops at the barrel's centreline, which is how a plumbing tee is actually
+#: made -- the branch bore meets the run bore and goes no further. Run past
+#: it and the branch emerges from the far side, turning the part into a plus
+#: instead of a tee: at 74 mm the tip reached y = -46.8 against a barrel
+#: surface at -47, so it crossed the whole barrel.
+FLANGE_LENGTH = 28.0
 
+#: The vertical barrel, which is the whole part. Long enough that the pad's
+#: circumference sits within its height, so from any angle the shoulder reads
+#: as one cylinder with a detail on its flank. Past ~152 mm it starts to foul
+#: link2's tube.
+BARREL_LENGTH = 152.0
+
+#: No tube: the pad sits directly on the barrel, so the two ends already meet
+#: and `build_ur_link` omits one. These remain because the builder still takes
+#: a profile, and to keep `collision_primitives` honest if that ever changes.
 TUBE_STATIONS = (0.0, 0.5, 1.0)
-TUBE_DIAMETERS = (44.0, 42.0, 44.0)
-TUBE_END_OFFSET = 0.0
+TUBE_DIAMETERS = (38.0, 38.0, 38.0)
+TUBE_OFFSETS = (0.0, 0.0, 0.0)
 
 
 def _drums():
-    """(rotor flange, stator housing) for this link."""
-    flange, housing, _, _ = link_ends(BODY, FLANGE_LENGTH)
-    return flange, housing
+    """(barrel, pad) for this link."""
+    barrel, pad, _, _ = link_ends(BODY, FLANGE_LENGTH, BARREL_LENGTH)
+    return barrel, pad
 
 
 def collision_primitives() -> list:
-    """Collision proxy: one cylinder per end, plus the tube between."""
-    import numpy as np
-
+    """Collision proxy: one cylinder per end."""
     from robotic_arm.parts.cobot import CollisionCylinder
 
-    flange, housing = _drums()
-    proxies = [
-        CollisionCylinder.from_drum(flange),
-        CollisionCylinder.from_drum(housing),
+    barrel, pad = _drums()
+    return [
+        CollisionCylinder.from_drum(barrel),
+        CollisionCylinder.from_drum(pad),
     ]
-    axis = np.asarray(housing.axis, float)
-    start = np.asarray(flange.centre, float)
-    end = np.asarray(housing.centre, float) + axis / np.linalg.norm(axis) * TUBE_END_OFFSET
-    points = [start + (end - start) * f for f in TUBE_STATIONS]
-    for a, b, da, db in zip(points, points[1:], TUBE_DIAMETERS, TUBE_DIAMETERS[1:]):
-        proxies.append(CollisionCylinder.from_span(a, b, max(da, db)))
-    return proxies
 
 
 def build_shoulder() -> Part:
@@ -71,12 +74,13 @@ def build_shoulder() -> Part:
         FLANGE_LENGTH,
         TUBE_STATIONS,
         TUBE_DIAMETERS,
-        tube_end_offset=TUBE_END_OFFSET,
+        housing_length=BARREL_LENGTH,
+        tube_offsets=TUBE_OFFSETS,
     )
 
 
 if __name__ == "__main__":
-    from robotic_arm.linkframes import link_frame, stock_mass
+    from robotic_arm.linkframes import stock_mass
     from robotic_arm.massprops import mass_properties
     from robotic_arm.parts import effective_material
 

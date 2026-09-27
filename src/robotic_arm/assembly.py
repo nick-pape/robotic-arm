@@ -296,20 +296,18 @@ def seated_actuator(body: str):
     # Hub face is the outermost point along the actuator's own axis.
     hub_face_z = solid.bounding_box().min.Z
 
-    from robotic_arm.parts.cobot import boss_direction, link_interfaces
+    from robotic_arm.parts.urlink import flange_direction
 
     # By the datum convention the rotor hub face sits *on* the joint plane,
-    # which is this link's own origin -- so the seat needs no part-specific
-    # constants. It used to read PARENT_LENGTH/PARENT_PROTRUSION off the part
-    # module, which the redesign removed.
-    boss, _, _, _ = link_interfaces(body, module.BOSS_LENGTH, module.CUP_LENGTH)
+    # which is this link's own origin, so the seat needs no part-specific
+    # constants. This has now twice been written against constants a redesign
+    # then removed -- PARENT_LENGTH/PARENT_PROTRUSION, then BOSS_LENGTH/
+    # CUP_LENGTH -- so it reads the direction from the archetype instead.
     face = np.zeros(3)
 
-    # The actuator extends *away* from this link's body, on the parent's side.
-    # `boss_direction` is the one record of which way that is: the parent axes
-    # on this arm are not consistently signed, and reading the sign off the
-    # raw axis gets it backwards on half the links.
-    plane = Plane(origin=Vector(*face), z_dir=Vector(*(-boss_direction(boss))))
+    # The motor body extends away from the flange: the flange caps it, and the
+    # two are on opposite sides of the joint plane by construction.
+    plane = Plane(origin=Vector(*face), z_dir=Vector(*(-flange_direction(body))))
     return plane * Location((0.0, 0.0, -hub_face_z)) * solid
 
 

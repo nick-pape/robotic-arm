@@ -287,12 +287,42 @@ def generate_twin(
     require(BASELINE_MJCF)
     spec = mujoco.MjSpec.from_file(str(BASELINE_MJCF))
 
+    # Apply any deliberate joint-frame departure to the model as well, or the
+    # CAD and the physics disagree: the parts are built against
+    # `linkframes.link_frame`, which already includes it.
+    from robotic_arm.linkframes import JOINT_SHIFT
+
+    for body_name, shift in JOINT_SHIFT.items():
+        body = spec.body(body_name)
+        body.pos = np.array(body.pos, dtype=float) + np.asarray(shift) * 1e-3
+
+    # Re-zero the joints so all-zeros stands the arm up, once the frames above
+    # are final -- the upright pose is a property of the kinematics, so it has
+    # to be solved after any frame departure and before anything reads a
+    # range. This moves no frame; see `homepose`.
+    from robotic_arm.homepose import apply_home_zero, upright_pose
+
+    spec.meshdir = str(require(ASSET_DIR)).replace("\\", "/")
+    probe = spec.compile()
+    pose = upright_pose(probe)
+    apply_home_zero(
+        spec, pose, {n: int(probe.joint(n).qposadr[0]) for n in pose}
+    )
+
     solids = {body: build() for body, (build, _) in REGISTRY.items()}
     overrides = cad_inertials(solids)
     apply_inertials(spec, overrides)
     if visuals:
         apply_visual_meshes(spec, solids, per_link_colour=per_link_colour)
     apply_collision_primitives(spec, cad_collision_primitives())
+
+    # Re-derive the joint limits from this geometry. Must come after the
+    # collision primitives, since the sweep is what they are for, and after
+    # the re-zero, since the sweep starts from home. See `jointlimits`.
+    from robotic_arm.jointlimits import apply_joint_ranges, collision_free_ranges
+
+    apply_joint_ranges(spec, collision_free_ranges(spec.compile()))
+
     if balancer is not None:
         add_to_spec(spec, balancer)
 
@@ -310,6 +340,9 @@ MESH_DIR = SIM_DIR / "meshes"
 #: One colour per printed link, for design review. A single grey makes it
 #: genuinely hard to see where one part ends and the next begins, which is how
 #: several joint faults survived a dozen renders.
+#: Actuators render dark, as they do on the real machine.
+ACTUATOR_RGBA = (0.16, 0.16, 0.18, 1.0)
+
 REVIEW_RGBA = {
     "base_link": (0.55, 0.55, 0.60, 1.0),
     "link1": (0.90, 0.45, 0.62, 1.0),
@@ -338,6 +371,8 @@ def apply_visual_meshes(
     right answer and is a later job.
     """
     from build123d import export_stl
+
+    from robotic_arm.parts.urlink import housed_actuators
 
     MESH_DIR.mkdir(parents=True, exist_ok=True)
     for body_name, solid in solids.items():
@@ -388,6 +423,41 @@ def apply_visual_meshes(
         # z-fight into streaks.
         for geom in spares:
             spec.delete(geom)
+
+        # Swap the stock motor meshes for the real vendor actuators, mounted
+        # where this design puts them.
+        #
+        # The stock `motor_*` meshes are motor *assemblies*, not actuators --
+        # `motor_2_3` holds two of them, and they reach 59 to 90 mm from their
+        # joint planes and at least 50 mm in radius, where an RS00 is O57 and
+        # 51 mm deep. Drawn next to housings sized from the vendor STEP they
+        # look like motors bursting out of their covers, when the real content
+        # is that two different objects were being compared. Measured against
+        # the STEP bodies the housings actually contain them, with only the
+        # rotor hub proud through the seam gap.
+        #
+        # This also matters because J2's motor is mounted on the opposite link
+        # from stock here, so the stock mesh is on the wrong body entirely.
+        for geom in motors:
+            spec.delete(geom)
+        for index, actuator in enumerate(housed_actuators(body_name)):
+            motor_stl = MESH_DIR / f"{body_name}_actuator{index}.stl"
+            export_stl(
+                actuator, str(motor_stl), tolerance=0.08, angular_tolerance=0.3
+            )
+            motor_mesh = f"{body_name}_actuator{index}"
+            spec.add_mesh(
+                name=motor_mesh,
+                file=os.path.relpath(motor_stl, ASSET_DIR).replace("\\", "/"),
+                scale=[1e-3, 1e-3, 1e-3],
+            )
+            geom = body.add_geom()
+            geom.type = mujoco.mjtGeom.mjGEOM_MESH
+            geom.meshname = motor_mesh
+            geom.group = 2
+            geom.contype = 0
+            geom.conaffinity = 0
+            geom.rgba = np.array(ACTUATOR_RGBA, dtype=float)
     return spec
 
 

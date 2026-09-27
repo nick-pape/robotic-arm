@@ -55,6 +55,59 @@ class LinkFrame:
         return abs(float(self.parent_axis @ self.child_axis)) < 1e-6
 
 
+#: Deliberate departures from the stock joint frames, in mm, as a shift of a
+#: body's origin within its parent's frame.
+#:
+#: The project's rule is that joint frames come from the stock URDF and are
+#: never touched -- reach and segment lengths then match exactly, which is how
+#: requirement F2 is enforced. These entries are the exceptions, made
+#: knowingly, and `scripts/compare_performance.py` reports what each costs.
+#:
+#: link2, x: stock puts J2 20.3 mm off the J1 axis, so the shoulder's
+#: horizontal barrel sits to one side of the vertical one instead of across
+#: it. Centring them turns the shoulder into a T rather than a barrel with
+#: something bolted to its shoulder-blade.
+#:
+#: link2, y: stock puts the J2 plane at y = 27.2, which is 20 mm *inside*
+#: link1's O94 barrel, so link2's barrel penetrates it and link1 has to be
+#: channelled out to clear it. Pushing the plane out to the barrel's surface
+#: at y = 47 makes the two butt, which is how a tee is actually assembled and
+#: how UR's own shoulder is built -- a flat boss on the barrel's side with the
+#: next barrel's face against it.
+#:
+#: link5: stock leaves the J4 and J5 axes **87 mm apart**, and the common
+#: perpendicular between them is pure world -x. Every wrist pair on a UR
+#: intersects, which is what lets two barrels touch and form a tee; at 87 mm
+#: apart they cannot, and link4 is forced to be a long raked link rather than
+#: a casting -- which is why it resisted a straight tube, a bowed tube, a
+#: lofted curve and an elbow in turn. The x term removes the 87 mm; the z
+#: term lifts J5 clear of the J4 plane so the branch has somewhere to leave
+#: from; the y term sets the run.
+#:
+#: Computed in **world** and then expressed in link4's frame, because that
+#: frame is turned relative to world: an earlier attempt reasoned directly in
+#: local coordinates and displaced the wrist 107 mm without meaning to.
+#:
+#: link3 and link4: removing the 87 mm costs reach, because that offset lay
+#: **in** the arm's plane and so paid about 1:1. Nothing inside link4 can
+#: repay it at that rate -- its branch lies along the J4 axis, parallel to J2
+#: and J3, so no joint can turn it radial and it only adds in quadrature
+#: (measured: 112 mm of branch bought 33 mm of reach); its run pays 0.63:1.
+#: Reach parity through link4 alone therefore needed a 217 mm barrel, which
+#: stopped looking like a wrist at all.
+#:
+#: The upper arm and forearm are in-plane and pay 1.93 mm of reach between
+#: them per mm each, so 41.5 mm on each restores 784.1 mm against stock's
+#: 783.9 while link4 stays a compact tee. This is the UR's own proportioning:
+#: long arm segments, small wrist castings.
+JOINT_SHIFT: dict[str, np.ndarray] = {
+    "link2": np.array([-20.34, 19.76, 0.0]),
+    "link3": np.array([-41.5, 0.0, 0.0]),
+    "link4": np.array([41.5, 0.0, 0.0]),
+    "link5": np.array([-87.0, 86.0, 72.75]),
+}
+
+
 @lru_cache(maxsize=16)
 def link_frame(name: str) -> LinkFrame:
     """Joint geometry for one link, read out of the stock model."""
@@ -79,6 +132,7 @@ def link_frame(name: str) -> LinkFrame:
         cid = children[0]
         child_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, cid)
         child_origin = np.array(model.body_pos[cid], dtype=float) * M_TO_MM
+        child_origin = child_origin + JOINT_SHIFT.get(child_name, 0.0)
         # The child's joint axis is given in the child's frame; rotate it into
         # ours so a drum can be placed without thinking in two frames at once.
         rotation = _quat2mat(model.body_quat[cid])

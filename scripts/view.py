@@ -40,6 +40,11 @@ def main() -> None:
     parser.add_argument(
         "--static", action="store_true", help="do not drive the trajectory"
     )
+    parser.add_argument(
+        "--colour",
+        action="store_true",
+        help="tint each printed link differently, for design review",
+    )
     parser.add_argument("--steps-per-leg", type=int, default=90)
     parser.add_argument(
         "--substeps", type=int, default=4, help="physics steps per viewer frame"
@@ -47,9 +52,23 @@ def main() -> None:
     args = parser.parse_args()
 
     balancer = Balancer.sized_for(DEFAULT_CANCEL_NM) if args.balancer else None
-    model_path = generate_twin(out=REPO / "sim" / "view_model.xml", balancer=balancer)
+    model_path = generate_twin(
+        out=REPO / "sim" / "view_model.xml",
+        balancer=balancer,
+        per_link_colour=args.colour,
+    )
     model = load(generate_scene(model_path))
     data = mujoco.MjData(model)
+
+    # Open at home, not at the reset pose. They are different on this arm:
+    # the joints are re-zeroed so all-zeros stands it upright (see
+    # `homepose`), which makes `qpos0` -- where every joint's rotation is zero
+    # -- the old stock sprawl. A viewer that reset would show the pose the
+    # re-zero exists to get away from.
+    home = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, "home")
+    if home >= 0:
+        mujoco.mj_resetDataKeyframe(model, data, home)
+    mujoco.mj_forward(model, data)
 
     rs06 = RS06()
     targets = trajectory(args.steps_per_leg)

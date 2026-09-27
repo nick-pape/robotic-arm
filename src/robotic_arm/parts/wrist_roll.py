@@ -29,8 +29,16 @@ BODY = "link5"
 #: constant: it is derived from the motor it has to enclose.
 FLANGE_LENGTH = 42.0
 
-#: Tube profile between the two ends, as fractions of the run and diameters at
-#: each station.
+#: The run of the tee. The RS00 only needs 55 mm, and at 55 the barrel stopped
+#: at x = -16.9 while the flange's own surface reaches x = -32 -- so the
+#: flange hung 15 mm off the barrel's **end**, which is neither an elbow nor a
+#: tee. 76.2 mm centres the barrel on the flange axis, making the flange a
+#: branch off its side. No joint frame moves; the barrel simply grows the
+#: 21 mm of empty length the blend needs, as link4's does.
+BARREL_LENGTH = 76.2
+
+#: No tube: at this barrel length the two ends already meet and
+#: `build_ur_link` omits one. Kept because the builder still takes a profile.
 TUBE_STATIONS = (0.0, 0.5, 1.0)
 TUBE_DIAMETERS = (38.0, 36.0, 38.0)
 
@@ -42,7 +50,7 @@ TUBE_END_OFFSET = 0.0
 
 def _drums():
     """(rotor flange, stator housing) for this link."""
-    flange, housing, _, _ = link_ends(BODY, FLANGE_LENGTH)
+    flange, housing, _, _ = link_ends(BODY, FLANGE_LENGTH, BARREL_LENGTH)
     return flange, housing
 
 
@@ -73,6 +81,7 @@ def build_wrist_roll() -> Part:
         FLANGE_LENGTH,
         TUBE_STATIONS,
         TUBE_DIAMETERS,
+        housing_length=BARREL_LENGTH,
         tube_end_offset=TUBE_END_OFFSET,
     )
 

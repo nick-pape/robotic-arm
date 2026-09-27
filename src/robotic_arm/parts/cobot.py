@@ -190,21 +190,63 @@ def bolt_ring(
     return holes
 
 
+def _edge_key(edge) -> tuple:
+    """Position-based identity for an edge, stable across rebuilds."""
+    centre = edge.center()
+    return (
+        round(float(centre.X), 3),
+        round(float(centre.Y), 3),
+        round(float(centre.Z), 3),
+        round(float(edge.length), 3),
+    )
+
+
 def break_edges(part: Part, radius: float | None = None) -> Part:
     """Break the sharpest outer edges, tolerating the ones OCCT refuses.
 
     A union of cylinders produces tangent intersections that cannot always be
     filleted. Rather than fail the build, this fillets what it can and leaves
     the rest -- a missing edge break is cosmetic, a failed build is not.
+
+    **It used to leave nearly all of them.** The edge list was gathered once
+    from the incoming part and then iterated while `part` was reassigned each
+    pass, so from the second edge onward `fillet([edge])` was working on a
+    shape that no longer existed -- build123d infers the parent from the edge,
+    so each pass re-filleted the *original* and overwrote the previous result.
+    The net effect was exactly one fillet per part, silently, because the
+    `except` swallowed the rest. Three separate audits of three separate links
+    all reported "1 TORUS face in the whole solid"; the arm looked like raw
+    cylinders jammed together because that is what it was.
+
+    Filleting the whole set in one call is also far faster than 50 rebuilds.
     """
     from build123d import fillet
 
     radius = STYLE.edge_break if radius is None else radius
-    circles = [
-        e
-        for e in part.edges().filter_by(lambda e: e.geom_type.name == "CIRCLE")
-    ]
-    for edge in circles:
+    circles = part.edges().filter_by(lambda e: e.geom_type.name == "CIRCLE")
+    if not circles:
+        return part
+
+    try:
+        return fillet(circles, radius=radius)
+    except Exception:  # noqa: BLE001 - see docstring
+        pass
+
+    # One at a time, re-querying the *current* part each pass so the edges are
+    # never stale. `done` holds the ones already tried, by position, so a
+    # failure is not retried forever; a success removes its edge from the
+    # shape anyway.
+    done: set[tuple] = set()
+    for _ in range(len(circles)):
+        candidates = [
+            e
+            for e in part.edges().filter_by(lambda e: e.geom_type.name == "CIRCLE")
+            if _edge_key(e) not in done
+        ]
+        if not candidates:
+            break
+        edge = candidates[0]
+        done.add(_edge_key(edge))
         try:
             part = fillet([edge], radius=radius)
         except Exception:  # noqa: BLE001 - cosmetic only, see docstring

@@ -27,12 +27,18 @@ BODY = "link2"
 
 #: How far the rotor flange reaches into the link. The housing depth is not a
 #: constant: it is derived from the motor it has to enclose.
-FLANGE_LENGTH = 52.0
+FLANGE_LENGTH = 62.0
+
+#: link2 has a housing at *both* ends -- it carries the stators of J2 and J3
+#: -- and a housing's depth normally comes from the motor it encloses. These
+#: barrels are lengthened past that so the tube meeting them can be a UR-like
+#: fraction of their diameter rather than half.
+BARREL_LENGTH = 62.0
 
 #: Tube profile between the two ends, as fractions of the run and diameters at
 #: each station.
 TUBE_STATIONS = (0.0, 0.5, 1.0)
-TUBE_DIAMETERS = (48.0, 44.0, 46.0)
+TUBE_DIAMETERS = (52.0, 50.0, 52.0)
 
 #: Slides the tube's target deeper into the housing. Aiming at the housing
 #: centre is right for an in-line joint and wrong for a perpendicular one,
@@ -42,7 +48,7 @@ TUBE_END_OFFSET = 0.0
 
 def _drums():
     """(rotor flange, stator housing) for this link."""
-    flange, housing, _, _ = link_ends(BODY, FLANGE_LENGTH)
+    flange, housing, _, _ = link_ends(BODY, FLANGE_LENGTH, BARREL_LENGTH)
     return flange, housing
 
 
@@ -73,6 +79,7 @@ def build_upper_arm() -> Part:
         FLANGE_LENGTH,
         TUBE_STATIONS,
         TUBE_DIAMETERS,
+        housing_length=BARREL_LENGTH,
         tube_end_offset=TUBE_END_OFFSET,
     )
 

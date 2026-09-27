@@ -84,7 +84,11 @@ class Style:
     #: looks finished rather than raw.
     edge_break: float = 0.8
     #: Larger radius where a shell meets a flange.
-    shoulder_fillet: float = 2.0
+    #: Blend where a link's tube meets a joint barrel. A UR5e's transitions
+    #: are soft; at 2.0 mm the junction still read as a bare T. Tried and
+    #: backed off per part in `urlink._blend_junctions`, so this is the
+    #: ambition rather than a guarantee.
+    shoulder_fillet: float = 8.0
     #: Cosmetic groove marking a joint line, as cobots use to hide the seam.
     seam_groove_width: float = 1.6
     seam_groove_depth: float = 0.6
