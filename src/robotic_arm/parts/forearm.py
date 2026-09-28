@@ -27,7 +27,13 @@ BODY = "link3"
 
 #: How far the rotor flange reaches into the link. The housing depth is not a
 #: constant: it is derived from the motor it has to enclose.
-FLANGE_LENGTH = 59.75
+FLANGE_LENGTH = 76.0
+#:
+#: 76 mm: the diameter of the J4 canister, used as the common height for
+#: every piece that is free to take it. The four -- J2's and J3's motor
+#: halves (this barrel serves both), J3's empty side and J4's motor half --
+#: are the only halves on the arm not pinned by tee geometry or by the
+#: gripper face, so they are the ones that can be made to agree.
 #:
 #: Matches link1's branch, which is what makes J3 the same length as J2:
 #: both are this flange plus the shared link2 barrel.
@@ -39,7 +45,13 @@ FLANGE_LENGTH = 59.75
 #: barrel cannot contain. Widening the barrel is the trade worth making --
 #: a segment that is visibly 2 degrees off straight is worse than a barrel a
 #: centimetre longer.
-BARREL_LENGTH = 59.75
+BARREL_LENGTH = 76.0
+#:
+#: 76 mm: the diameter of the J4 canister, used as the common height for
+#: every piece that is free to take it. The four -- J2's and J3's motor
+#: halves (this barrel serves both), J3's empty side and J4's motor half --
+#: are the only halves on the arm not pinned by tee geometry or by the
+#: gripper face, so they are the ones that can be made to agree.
 #:
 #: Sized so every RS00 joint presents the same 118 mm canister -- housing
 #: plus the flange that caps it. They were 112, 122 and 84, which is what

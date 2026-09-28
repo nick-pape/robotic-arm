@@ -33,7 +33,13 @@ FLANGE_LENGTH = 62.0
 #: -- and a housing's depth normally comes from the motor it encloses. These
 #: barrels are lengthened past that so the tube meeting them can be a UR-like
 #: fraction of their diameter rather than half.
-BARREL_LENGTH = 59.75
+BARREL_LENGTH = 76.0
+#:
+#: 76 mm: the diameter of the J4 canister, used as the common height for
+#: every piece that is free to take it. The four -- J2's and J3's motor
+#: halves (this barrel serves both), J3's empty side and J4's motor half --
+#: are the only halves on the arm not pinned by tee geometry or by the
+#: gripper face, so they are the ones that can be made to agree.
 #:
 #: Set so an RS06 joint presents the same **proportion** as an RS00 one:
 #: 160.75 mm on a O103.5 barrel is L/D 1.553, matching the wrist's 118 on
