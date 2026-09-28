@@ -15,9 +15,24 @@
       "bbox_mm": {
         "x": 84.5,
         "y": 82.0,
-        "z": 50.5
+        "z": 50.5,
+        "z_min": -1.5,
+        "z_max": 49.0
       },
       "bolt_circles": [
+        {
+          "bcd": 24.0,
+          "count": 3,
+          "hole_diameter": 2.5,
+          "depth": 2.0,
+          "bottom": 3.0,
+          "counterbore": null,
+          "plane_z": 5.0,
+          "axis_z": -1.0,
+          "angles_deg": [],
+          "pitch_deg": 120.0,
+          "source": "axial scan; missed by the pattern recogniser"
+        },
         {
           "bcd": 24.02,
           "count": 6,
@@ -76,6 +91,58 @@
             157.5
           ],
           "pitch_deg": 45.0
+        },
+        {
+          "bcd": 82.0,
+          "count": 4,
+          "hole_diameter": 2.5,
+          "depth": 0.1,
+          "bottom": 23.0,
+          "counterbore": null,
+          "plane_z": 23.1,
+          "axis_z": -1.0,
+          "angles_deg": [],
+          "pitch_deg": 90.0,
+          "source": "axial scan; missed by the pattern recogniser"
+        },
+        {
+          "bcd": 82.0,
+          "count": 4,
+          "hole_diameter": 2.5,
+          "depth": 8.0,
+          "bottom": 22.5,
+          "counterbore": null,
+          "plane_z": 30.5,
+          "axis_z": -1.0,
+          "angles_deg": [],
+          "pitch_deg": 90.0,
+          "source": "axial scan; missed by the pattern recogniser"
+        },
+        {
+          "bcd": 82.0,
+          "count": 4,
+          "hole_diameter": 3.0,
+          "depth": 2.1,
+          "bottom": 30.7,
+          "counterbore": null,
+          "plane_z": 32.8,
+          "axis_z": -1.0,
+          "angles_deg": [],
+          "pitch_deg": 90.0,
+          "source": "axial scan; missed by the pattern recogniser"
+        },
+        {
+          "bcd": 82.0,
+          "count": 8,
+          "hole_diameter": 3.2,
+          "depth": 2.0,
+          "bottom": 31.0,
+          "counterbore": null,
+          "plane_z": 33.0,
+          "axis_z": -1.0,
+          "angles_deg": [],
+          "pitch_deg": 45.0,
+          "source": "axial scan; missed by the pattern recogniser"
         }
       ]
     },
@@ -93,7 +160,9 @@
       "bbox_mm": {
         "x": 57.0,
         "y": 57.0,
-        "z": 51.4
+        "z": 51.4,
+        "z_min": -5.4,
+        "z_max": 46.0
       },
       "bolt_circles": [
         {
@@ -150,6 +219,19 @@
             135.0
           ],
           "pitch_deg": 90.0
+        },
+        {
+          "bcd": 38.0,
+          "count": 4,
+          "hole_diameter": 2.5,
+          "depth": 7.0,
+          "bottom": 39.0,
+          "counterbore": null,
+          "plane_z": 46.0,
+          "axis_z": -1.0,
+          "angles_deg": [],
+          "pitch_deg": 90.0,
+          "source": "axial scan; missed by the pattern recogniser"
         },
         {
           "bcd": 50.0,

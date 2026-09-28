@@ -33,7 +33,17 @@ FLANGE_LENGTH = 62.0
 #: -- and a housing's depth normally comes from the motor it encloses. These
 #: barrels are lengthened past that so the tube meeting them can be a UR-like
 #: fraction of their diameter rather than half.
-BARREL_LENGTH = 62.0
+BARREL_LENGTH = 59.75
+#:
+#: Set so an RS06 joint presents the same **proportion** as an RS00 one:
+#: 160.75 mm on a O103.5 barrel is L/D 1.553, matching the wrist's 118 on
+#: O76. The joints are conceptually the same object at two sizes, so they
+#: should scale rather than each find their own length -- at 62 this barrel
+#: gave L/D 1.18 against the wrist's 1.55 and the two families read as
+#: unrelated.
+#:
+#: This barrel sets J2 and J3 together: `_build_end` gives both ends of a
+#: link the same housing length.
 
 #: Tube profile between the two ends, as fractions of the run and diameters at
 #: each station.
@@ -74,14 +84,12 @@ def collision_primitives() -> list:
 
 def build_upper_arm() -> Part:
     """Return link2 as a solid, in its own frame."""
-    return build_ur_link(
-        BODY,
-        FLANGE_LENGTH,
-        TUBE_STATIONS,
-        TUBE_DIAMETERS,
-        housing_length=BARREL_LENGTH,
-        tube_end_offset=TUBE_END_OFFSET,
-    )
+    # Three printed pieces -- casting, tube, casting -- combined here because
+    # bolted together they are one rigid body. See `parts.span` for why the
+    # tube is separate and how it attaches.
+    from robotic_arm.parts.span import build_span_link
+
+    return build_span_link(BODY)
 
 
 if __name__ == "__main__":

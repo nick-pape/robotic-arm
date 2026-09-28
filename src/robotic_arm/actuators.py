@@ -123,6 +123,9 @@ class Actuator:
     peak_current_apk: float
     bolt_circles: tuple[BoltCircle, ...] = ()
     bbox_mm: tuple[float, float, float] | None = None
+    #: (min, max) along the motor axis with the stator face at zero. Front is
+    #: negative, back positive.
+    z_extent: tuple[float, float] | None = None
     #: The mounting face: a turning hub inside a fixed annulus.
     hub_diameter: float = 0.0
     hub_protrusion: float = 0.0
@@ -166,6 +169,78 @@ class Actuator:
         """Outer ring, on the fixed flange. The link **carrying** the motor
         bolts here, surrounding the driven link concentrically."""
         return self.circle(*_STATOR_CIRCLE[self.name])
+
+    @property
+    def rear_circle(self) -> BoltCircle:
+        """Tapped circle on the **back** of the motor, for mounting it there.
+
+        Both actuators have one, which is worth stating plainly because this
+        project assumed for a long time that they did not -- "RobStride motors
+        are not double-sided" -- and built around that. They are tapped from
+        the front *and* the back: the RS06 with four M3 at the same O82 circle
+        as its front pattern, 8 mm deep, entering 30.5 mm back; the RS00 with
+        four M3 at O38 on its rear face.
+
+        It matters because it decides which way the motor is fitted. Mounting
+        from the front means a bolt seat in front of the stator, which caps
+        the mouth well below the motor's own diameter, which means the motor
+        can only go in from behind, which means a motor-sized hole in the
+        back of every barrel. Mounting from the rear undoes all of that.
+
+        Selected rather than named: the circle drilled from the opposite end
+        to the stator's, at a tapping diameter, deep enough to hold a bolt.
+        Each actuator has exactly one that qualifies -- the shallow O82
+        features at 23 and 33 mm on the RS06 are counterbores and a locating
+        recess, and they are excluded by depth, not by being listed here.
+        """
+        stator = self.stator_circle
+        found = [
+            c
+            for c in self.bolt_circles
+            if c.axis_z * stator.axis_z < 0
+            and c.depth >= 4.0
+            and 2.3 <= c.hole_diameter <= 3.4
+        ]
+        if not found:
+            raise ValueError(
+                f"{self.name}: no rear mounting circle in the measured "
+                f"geometry; re-run scripts/measure_actuators.py"
+            )
+        return max(found, key=lambda c: c.depth)
+
+    @property
+    def rear_extent(self) -> float:
+        """How far the motor reaches **behind** its stator face, mm.
+
+        Measured from `stator_circle.plane_z`, which is the face the motor
+        actually bears on -- not from the STEP's own zero. Those differ by
+        5.0 mm on the RS00 and 0.5 on the RS06, and mixing the two datums
+        made its rear chamber come out as -5 mm of material.
+
+        Not the same as its overall length, and not the same as where it
+        bolts: the RS06 bolts at 30.5 mm and then carries a narrower can for
+        another 18.5, which the barrel still has to enclose.
+        """
+        if self.z_extent is None:
+            raise ValueError(f"{self.name}: no measured z extent")
+        return float(self.z_extent[1]) - self.stator_circle.plane_z
+
+    @property
+    def front_extent(self) -> float:
+        """How far the motor reaches in **front** of its stator face, mm."""
+        if self.z_extent is None:
+            raise ValueError(f"{self.name}: no measured z extent")
+        return self.stator_circle.plane_z - float(self.z_extent[0])
+
+    @property
+    def rear_mount_depth(self) -> float:
+        """How far behind the stator face the rear mounting plane sits, mm.
+
+        This is where the shelf the motor bolts to has to be, and it is *not*
+        the back of the motor: the RS06 carries a narrower can for another
+        16 mm past it, which the shelf has to clear.
+        """
+        return self.rear_circle.plane_z - self.stator_circle.plane_z
 
     # Kept as aliases: "output" and "housing" read as though they were on
     # opposite ends of the motor, which is what led to both link interfaces
@@ -263,6 +338,7 @@ def get(name: str) -> Actuator:
         name=name,
         bolt_circles=circles,
         bbox_mm=(bbox["x"], bbox["y"], bbox["z"]) if bbox else None,
+        z_extent=(bbox["z_min"], bbox["z_max"]) if bbox and "z_min" in bbox else None,
         **_RATINGS[name],
     )
 

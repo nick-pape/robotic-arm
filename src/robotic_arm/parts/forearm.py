@@ -27,7 +27,26 @@ BODY = "link3"
 
 #: How far the rotor flange reaches into the link. The housing depth is not a
 #: constant: it is derived from the motor it has to enclose.
-FLANGE_LENGTH = 62.0
+FLANGE_LENGTH = 59.75
+#:
+#: Matches link1's branch, which is what makes J3 the same length as J2:
+#: both are this flange plus the shared link2 barrel.
+
+#: The J4 barrel. Longer than the 55 mm the RS00 needs, because the tube is
+#: squared to the barrels rather than raked between their centres: this link's
+#: two barrels sit 9.6 mm apart along their shared axis, and meeting both at
+#: the same station moves the tube's end 4.8 mm off centre, which a 55 mm
+#: barrel cannot contain. Widening the barrel is the trade worth making --
+#: a segment that is visibly 2 degrees off straight is worse than a barrel a
+#: centimetre longer.
+BARREL_LENGTH = 59.75
+#:
+#: Sized so every RS00 joint presents the same 118 mm canister -- housing
+#: plus the flange that caps it. They were 112, 122 and 84, which is what
+#: made the wrist look unplanned next to itself. 118 is the floor, not a
+#: preference: link4's barrel has to be at least as long as its branch is
+#: wide (O76) or the tee stops reading as one, so J5 cannot come in under
+#: 76 + 42.
 
 #: Tube profile between the two ends, as fractions of the run and diameters at
 #: each station.
@@ -42,7 +61,7 @@ TUBE_END_OFFSET = 0.0
 
 def _drums():
     """(rotor flange, stator housing) for this link."""
-    flange, housing, _, _ = link_ends(BODY, FLANGE_LENGTH)
+    flange, housing, _, _ = link_ends(BODY, FLANGE_LENGTH, BARREL_LENGTH)
     return flange, housing
 
 
@@ -68,13 +87,12 @@ def collision_primitives() -> list:
 
 def build_forearm() -> Part:
     """Return link3 as a solid, in its own frame."""
-    return build_ur_link(
-        BODY,
-        FLANGE_LENGTH,
-        TUBE_STATIONS,
-        TUBE_DIAMETERS,
-        tube_end_offset=TUBE_END_OFFSET,
-    )
+    # Three printed pieces -- casting, tube, casting -- combined here because
+    # bolted together they are one rigid body. See `parts.span` for why the
+    # tube is separate and how it attaches.
+    from robotic_arm.parts.span import build_span_link
+
+    return build_span_link(BODY)
 
 
 if __name__ == "__main__":

@@ -35,6 +35,15 @@ class PrintRules:
 
     #: Heat-set inserts: M3 wants a 4.0 mm hole, with a boss 8-9 mm across so
     #: at least 1.6 mm of wall remains around it.
+    #:
+    #: M2.5 is here for the service caps. A cap carries no load -- it closes
+    #: the hole the motor was fitted through and nothing else -- so sizing its
+    #: screws for strength wastes diameter on a barrel that has to grow to
+    #: house the boss. The bore is what the insert is pressed into, not a
+    #: tapped thread: 3.6 mm for a standard M2.5 brass insert, 5.0 deep.
+    m25_insert_hole: float = 3.6
+    m25_insert_depth: float = 5.0
+    m25_boss_diameter: float = 7.0
     m3_insert_hole: float = 4.0
     m3_insert_depth: float = 6.0
     m3_boss_diameter: float = 9.0
@@ -47,6 +56,7 @@ class PrintRules:
     m6_boss_diameter: float = 14.0
 
     #: Clearance holes for screws passing through.
+    m25_clearance: float = 2.9
     m3_clearance: float = 3.4
     m4_clearance: float = 4.5
 
@@ -65,6 +75,8 @@ class PrintRules:
 
     def boss_for(self, thread: str) -> tuple[float, float]:
         """(hole diameter, boss outer diameter) for a heat-set insert."""
+        if thread == "M2.5":
+            return self.m25_insert_hole, self.m25_boss_diameter
         if thread == "M3":
             return self.m3_insert_hole, self.m3_boss_diameter
         if thread == "M4":

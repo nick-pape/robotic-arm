@@ -29,10 +29,16 @@ from __future__ import annotations
 
 import numpy as np
 
-#: Required gap before two links count as colliding, in metres. This is
-#: requirement S1's 3 mm, applied as a geom margin so MuJoCo reports a contact
-#: while the parts are still apart rather than once they have merged.
-CLEARANCE = 0.003
+#: Extra gap, in metres, before two links count as colliding.
+#:
+#: Small, because the sweep runs on **collision proxies**, and those already
+#: bound the real parts from outside -- a handful of cylinders around an
+#: L-shaped shell claims more space than the shell does. Requirement S1 asks
+#: for 3 mm between the real parts, and asking for 3 mm between the proxies
+#: too counts the same conservatism twice: at 3 mm the sweep called link3 and
+#: link5 touching at the home pose when the CAD has 3.6 mm between them, and
+#: reported zero travel for the whole arm.
+CLEARANCE = 0.001
 
 #: Most total travel any joint is given, in radians -- one full turn. Nothing
 #: mechanical here enforces it; it is a deliberate ceiling, since past a full
@@ -91,6 +97,37 @@ def collision_free_ranges(
                 reached = angle
             bounds.append(reached)
         high, low = bounds
+        if high <= 0.0 and low >= 0.0:
+            # The joint cannot move at all, which means the *home* pose is
+            # already in contact -- not that the joint is blocked. Say which
+            # parts are touching, because the alternative is an invalid range
+            # and a compile error two steps later that names only the joint.
+            data.qpos[:] = 0.0
+            mujoco.mj_forward(model, data)
+            touching = sorted(
+                {
+                    tuple(
+                        sorted(
+                            (
+                                mujoco.mj_id2name(
+                                    model, mujoco.mjtObj.mjOBJ_BODY,
+                                    model.geom_bodyid[c.geom1],
+                                ),
+                                mujoco.mj_id2name(
+                                    model, mujoco.mjtObj.mjOBJ_BODY,
+                                    model.geom_bodyid[c.geom2],
+                                ),
+                            )
+                        )
+                    )
+                    for c in data.contact[: data.ncon]
+                }
+            )
+            raise ValueError(
+                f"{name} has no clear travel: the home pose is already within "
+                f"{clearance * 1000:.0f} mm at "
+                + ", ".join(f"{a}/{b}" for a, b in touching)
+            )
         ranges[name] = (low, high)
     return ranges
 

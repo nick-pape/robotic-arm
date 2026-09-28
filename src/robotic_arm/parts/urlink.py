@@ -54,7 +54,47 @@ def housing_diameter(actuator, clearance: float | None = None,
     """
     clearance = STYLE.joint_gap if clearance is None else clearance
     wall = RULES.structural_wall_thickness if wall is None else wall
-    return actuator.stator_outer_diameter + 2 * clearance + 2 * wall
+    hole, _ = RULES.boss_for(CAP_THREAD)
+
+    # Two things set this, and the second is the one that moved.
+    #
+    # The motor is fitted through the **back**, because its stator bolts from
+    # the front and that seat caps the mouth well below the motor's own
+    # diameter. So the back opening is motor-sized, and the cap's inserts have
+    # to live in the ring of back plate outside it. That ring needs a hole's
+    # width plus a wall either side, and at O94 an RS06 barrel left 3.25 mm --
+    # nothing to screw into.
+    #
+    # An earlier revision bought that material with a flared collar on the
+    # last 10 mm of each barrel. This buys it by widening the barrel instead:
+    # same material, one diameter instead of two, and no step to look at.
+    # The insert sits in a land projecting inward from the back plate, so it
+    # is bounded by the **bore**, not by the outside diameter -- a first pass
+    # sized it against the outside and left 1.0 mm of material around a
+    # O4 hole, half the structural wall.
+    #
+    # The land takes a cosmetic wall rather than a structural one. Nothing is
+    # carried here: the cap closes the hole the motor was fitted through, and
+    # the screws hold a cover on. Spending a structural wall on it would cost
+    # another 1.6 mm of barrel diameter at every joint for no load path.
+    land = hole + 2 * RULES.cosmetic_wall_thickness
+    return max(
+        actuator.stator_outer_diameter + 2 * clearance + 2 * wall,
+        service_opening(actuator, clearance) + 2 * land + 2 * wall,
+    )
+
+
+def service_opening(actuator, clearance: float | None = None) -> float:
+    """The hole the motor is actually fitted through, in the back plate.
+
+    Sized on the motor's largest diameter with a running clearance. It cannot
+    be smaller: the mouth passes only `housing_bore`, so this is the only way
+    in, and both ends were once solid -- a motor fouled 6,041 mm3 escaping
+    through the mouth and up to 10,874 mm3 through the back, which is to say
+    the arm could not be assembled at all.
+    """
+    clearance = STYLE.joint_gap if clearance is None else clearance
+    return float(actuator.bbox_mm[0]) + 2 * clearance
 
 
 def housing_bore(actuator, clearance: float | None = None,
@@ -181,6 +221,159 @@ def default_housing_length(actuator, wall: float | None = None) -> float:
     """Just deep enough to enclose the motor and close behind it."""
     wall = RULES.structural_wall_thickness if wall is None else wall
     return motor_depth(actuator) - actuator.hub_protrusion + 2 * wall
+
+
+#: How many screws hold a service cap on. Three is enough for a cover that
+#: carries no load, and it keeps the bolt circle clear of everything else.
+SERVICE_BOLT_COUNT = 3
+
+#: Thread for those screws. Small on purpose: the cap closes the hole the
+#: motor was fitted through and carries nothing, while every millimetre of its
+#: boss is a millimetre the barrel has to grow to contain it. M2.5 rather than
+#: M3 takes O1.6 off every barrel on the arm.
+CAP_THREAD = "M2.5"
+
+#: How thick the back plate becomes in the ring outside the motor opening, so
+#: an M3 heat-set insert has somewhere to sit. Local to that ring, which is
+#: outside the motor's path, so it costs nothing in clearance.
+INSERT_LAND_THICKNESS = 7.0
+
+#: Cable pass-through down the middle of a span's spigots. Sized for a
+#: connector, not a motor -- the motor never comes this way.
+CABLE_BORE = 24.0
+
+
+def service_bcd(actuator, wall: float | None = None) -> float:
+    """Bolt circle holding the cap on, centred in the back plate's ring."""
+    wall = RULES.structural_wall_thickness if wall is None else wall
+    opening = service_opening(actuator)
+    return (opening + housing_diameter(actuator, wall=wall) - 2 * wall) / 2
+
+
+def service_collar_diameter(actuator, wall: float | None = None) -> float:
+    """Outside diameter of the cap: the barrel's own.
+
+    No collar, despite the name it kept. The cap is a cover sitting on the
+    back plate, so it has no reason to be wider than the barrel it caps.
+    """
+    return housing_diameter(actuator, wall=wall)
+
+
+def service_face(drum: Drum) -> np.ndarray:
+    """The outward back face of a housing, where its cap lands."""
+    return np.asarray(drum.centre, float) + np.asarray(
+        drum.axis, float
+    ) * drum.length / 2
+
+
+#: Sides on the splined spigot that joins a casting to its span tube.
+#:
+#: A regular polygon, not a round spigot, because the whole point is that the
+#: **geometry** carries the torque and the bolts only stop the tube sliding
+#: off. Round-and-bolted puts 360 N of shear onto a O4 hole in a 3 mm printed
+#: wall -- 30 MPa against PC-CF's ~70, and across the layers, which is the
+#: direction a print is weakest. Twelve flats spread the same torque over
+#: hundreds of mm2 and bring it down to single-digit MPa.
+#:
+#: Twelve also gives 30 degree detents, which does not have to divide the
+#: angle the kinematics want: both mating parts are ours, so the spigot's
+#: **phase** is set per casting and the nearest detent lands exactly.
+SPAN_LOBES = 12
+
+#: How far a spigot protrudes from its barrel. The first `SPAN_SETBACK` of it
+#: is the collar, so the part actually inside the tube is the difference --
+#: kept at 60 mm, which is what the slide fit needs to carry the bending
+#: rather than the fasteners.
+SPAN_ENGAGEMENT = 78.0
+
+#: Wall of the span tube. Thicker than the shells: it is unsupported over its
+#: middle and printed on its axis, so bending crosses the layers.
+SPAN_WALL = 3.0
+
+#: Diametral slip between spigot and bore.
+#:
+#: 0.4 rather than 0.25, for two reasons. A printed bore comes out undersize
+#: and a printed boss oversize, so 0.125 mm of radius is not a slip fit on a
+#: real machine -- `RULES.slip_fit` is 0.18 for exactly this. And at 0.125 the
+#: spigot's flats sit close enough to the bore that the two tessellate into
+#: each other and the tube renders speckled.
+SPAN_FIT = 0.4
+
+#: How far a spigot roots back into its barrel before emerging.
+SPAN_ROOT = 12.0
+
+#: How far short of the barrel the tube stops.
+#:
+#: `_blend_junctions` fillets the spigot where it leaves the barrel, and that
+#: fillet bulges to roughly O62 against a O46 bore -- so a tube run right up
+#: to the barrel butts into it. It cannot be counterbored away either: the
+#: relief would be wider than the tube. Stopping the tube a blend radius short
+#: leaves the fillet visible instead, which is what the transition looks like
+#: on a UR anyway.
+#: 18 mm, not 9. The collar occupies this length, and OCCT will not place a
+#: fillet that runs past the end of the face it sits on -- at 9 mm an 8 mm
+#: blend had nowhere to go, `_blend_junctions` backed off to nothing, and the
+#: flare at the root vanished. Twice the blend radius leaves it room.
+SPAN_SETBACK = 18.0
+
+#: Retention bolts per end. They carry no torque -- see `SPAN_LOBES`.
+SPAN_BOLT_COUNT = 2
+SPAN_BOLT_THREAD = "M4"
+
+
+def _perpendicular(axis, index: int, count: int):
+    """One of `count` directions evenly spaced perpendicular to `axis`."""
+    axis = np.asarray(axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+    seed = np.array([1.0, 0.0, 0.0])
+    if abs(float(seed @ axis)) > 0.9:
+        seed = np.array([0.0, 1.0, 0.0])
+    u = np.cross(axis, seed)
+    u /= np.linalg.norm(u)
+    v = np.cross(axis, u)
+    theta = np.pi * index / count
+    return np.cos(theta) * u + np.sin(theta) * v
+
+
+def polygon_prism(centre, axis, circumradius: float, length: float,
+                  lobes: int = SPAN_LOBES, phase: float = 0.0):
+    """A regular-polygon prism on an arbitrary axis, for a splined spigot."""
+    from build123d import (
+        Align, BuildPart, BuildSketch, Plane, RegularPolygon, Vector, extrude,
+    )
+
+    axis = np.asarray(axis, dtype=float)
+    axis = axis / np.linalg.norm(axis)
+    plane = Plane(
+        origin=Vector(*(float(v) for v in np.asarray(centre, float))),
+        z_dir=Vector(*(float(v) for v in axis)),
+    )
+    with BuildPart() as prism:
+        with BuildSketch(plane) as sketch:
+            RegularPolygon(radius=circumradius, side_count=lobes,
+                           rotation=phase, align=(Align.CENTER, Align.CENTER))
+        extrude(amount=length)
+    return prism.part
+
+
+def span_gap(body: str, flange_length: float, housing_length: float | None = None):
+    """(start, end, axis) of the clear run between a span link's two barrels.
+
+    The tube occupies exactly this gap, so its printed length is the distance
+    between the barrel surfaces -- 174 mm on link2, 189 on link3 -- and both
+    fit a 256 mm bed. Sizing it instead as "exposed length plus two
+    engagements" would have made it 294 mm and solved nothing.
+    """
+    near, far, _, _ = link_ends(body, flange_length, housing_length)
+    a = np.asarray(near.centre, float)
+    b = np.asarray(far.centre, float)
+    run = b - a
+    run = run / np.linalg.norm(run)
+    return (
+        a + run * near.diameter / 2,
+        b - run * far.diameter / 2,
+        run,
+    )
 
 
 def _joint_pose(joint: str):
@@ -615,8 +808,17 @@ def build_ur_link(
     tube_offsets: tuple[float, ...] | None = None,
     flange_diameter: float | None = None,
     tube_waypoints: tuple[tuple[float, float, float], ...] | None = None,
+    span: bool = False,
 ):
-    """Assemble one link: rotor flange, tube, stator housing."""
+    """Assemble one link: rotor flange, tube, stator housing.
+
+    With `span=True` the tube is **not** part of this link. Each end grows a
+    splined spigot instead and the two ends come back as separate solids, to
+    be printed separately and joined by the tube `parts.span` builds. That is
+    the only way link2 and link3 get onto a 256 mm bed: as one piece they are
+    381 and 359 mm long, and they are the only two parts on the arm that do
+    not fit.
+    """
     from robotic_arm.assembly import DRIVER_DIAMETER
     from robotic_arm.linkframes import link_frame
     from robotic_arm.parts.cobot import (
@@ -638,6 +840,40 @@ def build_ur_link(
     f_axis = np.asarray(far.axis, float) / np.linalg.norm(far.axis)
     start = np.asarray(near.centre, float)
     finish = np.asarray(far.centre, float) + f_axis * tube_end_offset
+
+    # Square the tube to the barrels it joins.
+    #
+    # Where both barrel axes are parallel -- which is every straight link on
+    # this arm -- any difference in where the two barrels sit *along* that
+    # shared axis rakes the tube by exactly that much. link3's barrels are
+    # 9.6 mm apart along their axes, which tilted its tube 2.0 degrees: not
+    # obviously wrong in a render, but enough to read as a segment that is not
+    # quite straight.
+    #
+    # A barrel is a cylinder, so the tube may meet it anywhere along its
+    # length. Meeting both at the same along-axis station costs nothing and
+    # makes the tube perpendicular to both, which is what a straight arm
+    # segment looks like. The offset is absorbed by the barrels, which is the
+    # right place for it -- they are wide and short, and a few millimetres of
+    # station is invisible on them.
+    if abs(float(n_axis @ f_axis)) > 0.999:
+        station = (float(start @ n_axis) + float(finish @ n_axis)) / 2
+        for label, point, drum, axis in (
+            ("own", start, near, n_axis),
+            ("child", finish, far, f_axis),
+        ):
+            shift = abs(station - float(point @ n_axis))
+            if shift > drum.length / 2 - wall:
+                raise ValueError(
+                    f"{body}: squaring the tube moves its {label} end "
+                    f"{shift:.1f} mm along a {drum.length:.0f} mm barrel, "
+                    f"which is past its cap; lengthen that barrel"
+                )
+        start = start + n_axis * (station - float(start @ n_axis))
+        finish = finish + f_axis * (station - float(finish @ f_axis)) * float(
+            np.sign(n_axis @ f_axis)
+        )
+
     points = [start + (finish - start) * t for t in tube_stations]
 
     # Bow the tube off that straight line, one offset per station along the
@@ -682,7 +918,7 @@ def build_ur_link(
     joined = len(barrels.solids()) == 1
 
     for kind, drum, actuator, axis, diameter, label in ends:
-        if joined:
+        if joined or span:
             break
         if diameter > drum.diameter - wall:
             raise ValueError(
@@ -705,10 +941,12 @@ def build_ur_link(
     # tube clean out of the far cap -- 11.4 mm of stub on link4, with its
     # cavity punching an open O24 hole into the link.
     along_last = float((points[-1] - np.asarray(far.centre, float)) @ f_axis)
+    if span:
+        reach = 0.0
     reach = abs(along_last) + tube_diameters[-1] * float(
         np.sqrt(max(0.0, 1.0 - (run @ f_axis) ** 2))
     ) / 2
-    if not joined and reach > far.length / 2 - wall:
+    if not joined and not span and reach > far.length / 2 - wall:
         raise ValueError(
             f"{body}: the tube reaches {reach:.1f} mm from the far barrel's "
             f"centre but only {far.length / 2 - wall:.1f} mm is available; "
@@ -722,7 +960,52 @@ def build_ur_link(
     # its tube was always buried and invisible; link1's are 1.3 mm apart, and
     # its tube had to be bowed 40 mm sideways to dodge link2, which put a
     # visible C-shaped loop on the shoulder joining two things already touching.
-    if joined:
+    if span:
+        # Two castings, each with a spigot reaching into the tube. No tube
+        # here: it is a separate printed part, and the guards below all
+        # concern a tube that is about to be lofted.
+        gap_start, gap_end, gap_axis = span_gap(body, flange_length, housing_length)
+        bore = (max(tube_diameters) - 2 * SPAN_WALL) / 2
+        # Each spigot is rooted a little way back **inside** its barrel.
+        # Started exactly on the barrel surface it is tangent to it, touching
+        # along a line rather than joining, and the link builds as four loose
+        # solids instead of two castings.
+        # Both spigots are built along **+gap_axis**, the same direction the
+        # tube's bore is. A prism built along -gap_axis lands on a plane with
+        # a different x/y basis, so its flats are clocked differently from the
+        # bore they have to enter -- worth a few hundred mm3 of interference
+        # that reads as a fit problem rather than the phasing error it is.
+        # A collar at the tube's own diameter, over exactly the setback, so
+        # the tube butts it face to face and the silhouette runs straight
+        # through: barrel -> flare -> O52 collar -> seam -> O52 tube.
+        #
+        # Without it the profile went barrel, O60 blend root, down past the
+        # tube diameter to a bare O46 spigot, then a step back out to the
+        # O52 tube -- fat, pinched, then stepped. Photographs of a UR3e show
+        # the tube and its casting flush at one diameter with a seam band
+        # over the joint, which is what this is.
+        root = SPAN_ROOT
+        collar = max(tube_diameters)
+        outer = (
+            barrels
+            # Rooted back inside the barrel, like the spigot. Started on the
+            # barrel's surface the collar is *tangent* to it: they touch along
+            # a line, no intersection curve exists, and `_blend_junctions` has
+            # nothing to fillet -- which is where the flare at the root went.
+            + _oriented_cylinder(
+                gap_start + gap_axis * (SPAN_SETBACK - SPAN_ROOT) / 2, gap_axis,
+                collar / 2, SPAN_SETBACK + SPAN_ROOT,
+            )
+            + _oriented_cylinder(
+                gap_end - gap_axis * (SPAN_SETBACK - SPAN_ROOT) / 2, gap_axis,
+                collar / 2, SPAN_SETBACK + SPAN_ROOT,
+            )
+            + polygon_prism(gap_start - gap_axis * root, gap_axis,
+                            bore - SPAN_FIT / 2, SPAN_ENGAGEMENT + root)
+            + polygon_prism(gap_end - gap_axis * SPAN_ENGAGEMENT, gap_axis,
+                            bore - SPAN_FIT / 2, SPAN_ENGAGEMENT + root)
+        )
+    elif joined:
         outer = barrels
     elif tube_waypoints is not None:
         # Named waypoints mean an **elbow**: straight runs meeting at corners.
@@ -754,11 +1037,23 @@ def build_ur_link(
     # interrupted by the shell openings and OCCT refuses it.
     outer = _blend_junctions(outer, STYLE.shoulder_fillet)
 
+
     # Cavities, one per end. A flange's mating cap is thicker than a wall by
     # exactly the relief cut into it below, so what survives the relief is
     # still a full wall; at plain `wall` a 2.2 mm relief cut through a 2.0 mm
     # cap and freed the rim as a second solid.
-    if joined:
+    if span:
+        # A cable run straight through both spigots, round rather than splined
+        # -- the flats are a torque feature, not a bore.
+        gap_start, gap_end, gap_axis = span_gap(body, flange_length, housing_length)
+        inner = _oriented_cylinder(
+            gap_start + gap_axis * SPAN_ENGAGEMENT / 2, gap_axis,
+            CABLE_BORE / 2, SPAN_ENGAGEMENT + 2 * wall,
+        ) + _oriented_cylinder(
+            gap_end - gap_axis * SPAN_ENGAGEMENT / 2, gap_axis,
+            CABLE_BORE / 2, SPAN_ENGAGEMENT + 2 * wall,
+        )
+    elif joined:
         inner = None
     elif tube_waypoints is not None:
         from robotic_arm.parts.cobot import tube as straight_tube
@@ -811,6 +1106,42 @@ def build_ur_link(
                 count=actuator.stator_circle.count,
                 hole_diameter=RULES.m3_clearance,
                 depth=wall * 3,
+            )
+            # The service opening: the hole the motor goes in through.
+            # Without it the barrel is sealed at both ends and the arm cannot
+            # be assembled at all -- which is how it was, for a long time.
+            back = service_face(drum)
+            part -= _oriented_cylinder(
+                back, axis, service_opening(actuator) / 2, 4 * wall
+            )
+
+            # A land inside the back plate for the cap's inserts to sit in.
+            # The plate itself is one wall thick and an M3 insert needs six,
+            # so without this the insert simply comes out the other side.
+            # Annular rather than three bosses: it is no heavier at this size,
+            # it prints without islands, and it does not have to be clocked to
+            # anything.
+            land = _oriented_cylinder(
+                back - axis * INSERT_LAND_THICKNESS / 2,
+                axis,
+                (drum.diameter - 2 * wall) / 2,
+                INSERT_LAND_THICKNESS,
+            ) - _oriented_cylinder(
+                back - axis * INSERT_LAND_THICKNESS / 2,
+                axis,
+                service_opening(actuator) / 2,
+                INSERT_LAND_THICKNESS + 2.0,
+            )
+            part = part + land
+
+            insert_hole, _ = RULES.boss_for(CAP_THREAD)
+            part -= bolt_ring(
+                centre=back - axis * (RULES.m25_insert_depth / 2 - 0.01),
+                axis=axis,
+                bcd=service_bcd(actuator),
+                count=SERVICE_BOLT_COUNT,
+                hole_diameter=insert_hole,
+                depth=RULES.m25_insert_depth,
             )
         else:
             # Relieve outside the hub this flange bears on, so it clears the
@@ -870,9 +1201,38 @@ def build_ur_link(
             child_barrel.length + 2 * clearance,
         )
 
+    # Retention bolts, perpendicular to the way the tube slides on. They hold
+    # it against sliding off and nothing else: the splines carry the torque.
+    if span:
+        gap_start, gap_end, gap_axis = span_gap(body, flange_length, housing_length)
+        hole, _ = RULES.boss_for(SPAN_BOLT_THREAD)
+        reach = max(tube_diameters)
+        for origin, sign in ((gap_start, 1.0), (gap_end, -1.0)):
+            seat = origin + gap_axis * sign * (SPAN_ENGAGEMENT * 0.6)
+            for i in range(SPAN_BOLT_COUNT):
+                # Also off `gap_axis`, for the same reason as the spigots.
+                radial = _perpendicular(gap_axis, i, SPAN_BOLT_COUNT)
+                part -= _oriented_cylinder(seat, radial, hole / 2, reach)
+
     part = break_edges(part)
-    if len(part.solids()) != 1:
-        sizes = sorted((float(s.volume) for s in part.solids()), reverse=True)
+
+    # OCCT sometimes leaves zero-volume slivers behind a boolean -- link4 came
+    # back as "3 solids (44,690, 0, 0)". They are numerical debris, not
+    # pieces, so they are discarded before counting; anything with real volume
+    # still trips the checks below, which is what those are for.
+    def real(shape) -> list:
+        return [s for s in shape.solids() if float(s.volume) > 1.0]
+
+    if span:
+        pieces = real(part)
+        if len(pieces) != 2:
+            raise ValueError(
+                f"{body}: a span link should build as two castings, got "
+                f"{len(pieces)}"
+            )
+        return list(pieces)
+    if len(real(part)) != 1:
+        sizes = sorted((float(s.volume) for s in real(part)), reverse=True)
         raise ValueError(
             f"{body}: built {len(part.solids())} solids "
             f"({', '.join(f'{v:,.0f}' for v in sizes)} mm^3); a link is one "
@@ -881,6 +1241,67 @@ def build_ur_link(
     return part
 
 
+
+
+def housed_joints(body: str) -> list[tuple[int, object]]:
+    """(joint index, actuator) for every motor this body encloses.
+
+    A body holds a motor wherever it holds that joint's **stator**, which can
+    be its own joint, its child's, or both -- link2 carries M2 and M3. Split
+    out of `housed_actuators` so callers that want the *housing* rather than
+    the motor, such as the service caps, do not have to re-derive it and
+    drift from it.
+    """
+    from robotic_arm.actuators import for_joint
+    from robotic_arm.linkframes import link_frame
+
+    frame = link_frame(body)
+    held = []
+    if body.startswith("link"):
+        index = int(body.removeprefix("link"))
+        if carries_own_housing(body):
+            held.append(index)
+    child = frame.child_name
+    if child and child.startswith("link"):
+        child_index = int(child.removeprefix("link"))
+        if child_index <= 6 and not carries_own_housing(child):
+            held.append(child_index)
+    return [(i, for_joint(f"joint{i}")) for i in held]
+
+
+def housing_length_for(body: str) -> float | None:
+    """The barrel length this link is actually built with, or None for default.
+
+    Read from the part module rather than duplicated, because every link picks
+    its own: the shoulder's run is 152 mm, link4's 80, link5's 76.2, and only
+    link3 takes the default. Assuming the default put five of the six service
+    caps somewhere other than the face they cap -- up to 7,554 mm3 of cap
+    buried in its own link -- which is the sort of thing that looks fine in a
+    render taken from the other side.
+    """
+    import sys
+
+    from robotic_arm.parts import REGISTRY
+
+    if body not in REGISTRY:
+        return None
+    module = sys.modules.get(REGISTRY[body][0].__module__)
+    return getattr(module, "BARREL_LENGTH", None)
+
+
+def housing_drum(body: str, joint_index: int, length: float | None = None) -> Drum:
+    """The barrel enclosing one joint's motor, in `body`'s own frame."""
+    from robotic_arm.actuators import for_joint
+
+    actuator = for_joint(f"joint{joint_index}")
+    if length is None:
+        length = housing_length_for(body)
+    return stator_housing(
+        end_direction(body, joint_index, "housing"),
+        motor_plane(body, joint_index),
+        actuator,
+        default_housing_length(actuator) if length is None else length,
+    )
 
 
 def housed_actuators(body: str) -> list:

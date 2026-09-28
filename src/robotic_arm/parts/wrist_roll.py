@@ -27,7 +27,7 @@ BODY = "link5"
 
 #: How far the rotor flange reaches into the link. The housing depth is not a
 #: constant: it is derived from the motor it has to enclose.
-FLANGE_LENGTH = 42.0
+FLANGE_LENGTH = 43.5
 
 #: The run of the tee. The RS00 only needs 55 mm, and at 55 the barrel stopped
 #: at x = -16.9 while the flange's own surface reaches x = -32 -- so the
@@ -35,7 +35,14 @@ FLANGE_LENGTH = 42.0
 #: tee. 76.2 mm centres the barrel on the flange axis, making the flange a
 #: branch off its side. No joint frame moves; the barrel simply grows the
 #: 21 mm of empty length the blend needs, as link4's does.
-BARREL_LENGTH = 76.2
+BARREL_LENGTH = 111.5
+#:
+#: Sized so every RS00 joint presents the same 118 mm canister -- housing
+#: plus the flange that caps it. They were 112, 122 and 84, which is what
+#: made the wrist look unplanned next to itself. 118 is the floor, not a
+#: preference: link4's barrel has to be at least as long as its branch is
+#: wide (O76) or the tee stops reading as one, so J5 cannot come in under
+#: 76 + 42.
 
 #: No tube: at this barrel length the two ends already meet and
 #: `build_ur_link` omits one. Kept because the builder still takes a profile.

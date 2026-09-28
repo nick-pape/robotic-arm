@@ -32,15 +32,24 @@ BODY = "link1"
 #: Stops at the barrel's centreline, which is how a plumbing tee is actually
 #: made -- the branch bore meets the run bore and goes no further. Run past
 #: it and the branch emerges from the far side, turning the part into a plus
-#: instead of a tee: at 74 mm the tip reached y = -46.8 against a barrel
-#: surface at -47, so it crossed the whole barrel.
-FLANGE_LENGTH = 28.0
+#: instead of a tee.
+#:
+#: So this tracks the barrel's radius and has to move with it. At 28 mm it
+#: suited a O94 barrel; once the barrel grew to O103.5 to house the cap's
+#: inserts, the J2 plane at y = 47 ended up 4.75 mm **inside** the barrel --
+#: the branch never emerged, link2's barrel had to be channelled out of
+#: link1, and link1's own cap had nowhere to sit.
+FLANGE_LENGTH = 59.75
 
-#: The vertical barrel, which is the whole part. Long enough that the pad's
-#: circumference sits within its height, so from any angle the shoulder reads
-#: as one cylinder with a detail on its flank. Past ~152 mm it starts to foul
-#: link2's tube.
-BARREL_LENGTH = 152.0
+#: The vertical barrel, which is the whole part. Long enough that the branch's
+#: whole circumference sits within its height, so from any angle the shoulder
+#: reads as one cylinder with a detail on its flank.
+#:
+#: It has to clear the branch **and** the cap's insert land behind it. At
+#: 152 mm it did neither: the branch is as wide as the barrel, so once the
+#: barrel grew to O103.5 the branch spanned to 121.8 against a back face at
+#: 116.5 -- overshooting it by 5.2 mm, straight through where the cap sits.
+BARREL_LENGTH = 172.0
 
 #: No tube: the pad sits directly on the barrel, so the two ends already meet
 #: and `build_ur_link` omits one. These remain because the builder still takes

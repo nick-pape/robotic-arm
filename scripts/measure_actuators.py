@@ -91,6 +91,72 @@ def mounting_face(shape) -> dict:
     }
 
 
+def axial_tapped_circles(shape, known) -> list[dict]:
+    """Tapped circles the pattern recogniser did not report.
+
+    `recognise_hole_patterns` finds circles opening onto an outer face. The
+    RS06's **rear** mounting circle does not: it sits in a recess 2.5 mm below
+    the back of the stator body, with the motor's rear can standing proud
+    beyond it, and the recogniser passes over it. So the arm was designed for
+    two years of session on the belief that the RS06 could only be mounted
+    from the front -- which forced the motor to be fitted from the back, which
+    forced a flared collar onto every barrel to carry the cap.
+
+    It is four M3 holes at the same O82 circle as the front pattern. This
+    finds them the blunt way: every cylindrical face whose axis is the
+    motor's, grouped by radius from that axis and by the z band it occupies,
+    keeping groups of three or more at a tapping diameter.
+    """
+    import numpy as np
+    from collections import defaultdict
+    from OCP.BRepAdaptor import BRepAdaptor_Surface
+
+    bands = defaultdict(list)
+    for face in shape.faces():
+        if face.geom_type.name != "CYLINDER":
+            continue
+        surface = BRepAdaptor_Surface(face.wrapped)
+        cylinder = surface.Cylinder()
+        if abs(cylinder.Axis().Direction().Z()) < 0.9:
+            continue
+        location = cylinder.Location()
+        radius = float(np.hypot(location.X(), location.Y()))
+        diameter = 2 * cylinder.Radius()
+        if radius < 3.0 or not (2.3 <= diameter <= 3.4):
+            continue
+        box = face.bounding_box()
+        bands[(round(2 * radius, 1), round(diameter, 2),
+               round(box.min.Z, 1), round(box.max.Z, 1))].append(face)
+
+    out = []
+    for (bcd, diameter, low, high), faces in sorted(bands.items()):
+        if len(faces) < 3:
+            continue
+        if any(
+            abs(k["bcd"] - bcd) < 1.0 and abs(k["plane_z"] - low) < 1.0
+            for k in known
+        ):
+            continue
+        # Drilled from whichever end it opens on: a hole whose far end is
+        # deeper into the body opens toward -z, and vice versa.
+        out.append(
+            {
+                "bcd": bcd,
+                "count": len(faces),
+                "hole_diameter": diameter,
+                "depth": round(high - low, 3),
+                "bottom": low,
+                "counterbore": None,
+                "plane_z": high,
+                "axis_z": -1.0,
+                "angles_deg": [],
+                "pitch_deg": round(360.0 / len(faces), 4),
+                "source": "axial scan; missed by the pattern recogniser",
+            }
+        )
+    return out
+
+
 def measure(path: Path) -> dict:
     shape = import_step(str(path))
     bbox = shape.bounding_box()
@@ -119,7 +185,8 @@ def measure(path: Path) -> dict:
             }
         )
 
-    patterns.sort(key=lambda p: p["bcd"])
+    patterns.extend(axial_tapped_circles(shape, patterns))
+    patterns.sort(key=lambda p: (p["bcd"], p["plane_z"]))
     return {
         "mounting_face": mounting_face(shape),
         "source_file": path.name,
@@ -128,6 +195,13 @@ def measure(path: Path) -> dict:
             "x": round(bbox.size.X, 3),
             "y": round(bbox.size.Y, 3),
             "z": round(bbox.size.Z, 3),
+            # Signed extents in the STEP's own frame, where z=0 is the stator
+            # face. The size alone is not enough to place anything: the RS00
+            # reaches 5.4 mm in front of that face and the RS06 only 1.5, so
+            # deriving how deep a motor sits from its overall length is off by
+            # 5 mm on one of the two.
+            "z_min": round(bbox.min.Z, 3),
+            "z_max": round(bbox.max.Z, 3),
         },
         "bolt_circles": patterns,
     }

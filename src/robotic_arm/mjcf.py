@@ -243,12 +243,25 @@ def cad_inertials(
     from robotic_arm.massprops import combine, mass_properties
     from robotic_arm.parts import REGISTRY, actuator_mass_properties, effective_material
 
+    from robotic_arm.parts.servicecap import MATERIAL as CAP_MATERIAL, placed
+
     out = {}
     for body, (build, material) in REGISTRY.items():
         part = solids[body] if solids is not None else build()
-        shell = mass_properties(part, effective_material(part, material))
+        pieces = [mass_properties(part, effective_material(part, material))]
+        # The service caps are separate printed pieces, but they are bolted
+        # solid to the link, so the link's inertial is what they contribute
+        # to. 237 g across the six joints -- not a rounding error against a
+        # 3.9 kg arm, and all of it at the back of a barrel where it has
+        # leverage.
+        for cap in placed(body):
+            pieces.append(
+                mass_properties(cap, effective_material(cap, CAP_MATERIAL))
+            )
         actuator = actuator_mass_properties(body)
-        out[body] = combine([shell, actuator]) if actuator else shell
+        if actuator:
+            pieces.append(actuator)
+        out[body] = combine(pieces) if len(pieces) > 1 else pieces[0]
     return out
 
 
@@ -343,14 +356,29 @@ MESH_DIR = SIM_DIR / "meshes"
 #: Actuators render dark, as they do on the real machine.
 ACTUATOR_RGBA = (0.16, 0.16, 0.18, 1.0)
 
+#: Service caps render in their own colour, as UR's do. They are separate
+#: printed pieces and the only part of the arm a user is meant to remove, so
+#: showing them as distinct from the shell is honest rather than decorative.
+CAP_RGBA = (0.47, 0.73, 0.89, 1.0)
+
+#: UR's own palette, so the render reads the way the real thing does:
+#: light-blue service caps, silver spans and base, dark-grey joint castings,
+#: black motors.
+#:
+#: link2 and link3 are three printed pieces each, so their castings take the
+#: joint colour and only the tube between them is silver -- emitted as its own
+#: geom below rather than baked into the link's mesh.
+SILVER = (0.76, 0.77, 0.79, 1.0)
+DARK_GREY = (0.27, 0.28, 0.30, 1.0)
+
 REVIEW_RGBA = {
-    "base_link": (0.55, 0.55, 0.60, 1.0),
-    "link1": (0.90, 0.45, 0.62, 1.0),
-    "link2": (0.85, 0.33, 0.28, 1.0),
-    "link3": (0.95, 0.70, 0.22, 1.0),
-    "link4": (0.35, 0.65, 0.40, 1.0),
-    "link5": (0.30, 0.55, 0.85, 1.0),
-    "link6": (0.65, 0.42, 0.80, 1.0),
+    "base_link": SILVER,
+    "link1": DARK_GREY,
+    "link2": DARK_GREY,
+    "link3": DARK_GREY,
+    "link4": DARK_GREY,
+    "link5": DARK_GREY,
+    "link6": DARK_GREY,
 }
 
 
@@ -372,6 +400,8 @@ def apply_visual_meshes(
     """
     from build123d import export_stl
 
+    from robotic_arm.parts.servicecap import placed as placed_caps
+    from robotic_arm.parts.span import SPAN_BODIES, build_span_pieces
     from robotic_arm.parts.urlink import housed_actuators
 
     MESH_DIR.mkdir(parents=True, exist_ok=True)
@@ -423,6 +453,50 @@ def apply_visual_meshes(
         # z-fight into streaks.
         for geom in spares:
             spec.delete(geom)
+
+        # The span tube, as its own geom. link2 and link3 are casting + tube +
+        # casting, and the tube is a different part in a different colour, so
+        # baking it into the link's mesh would lose both facts.
+        if body_name in SPAN_BODIES:
+            tube = build_span_pieces(body_name)["tube"]
+            tube_stl = MESH_DIR / f"{body_name}_tube.stl"
+            export_stl(tube, str(tube_stl), tolerance=0.05, angular_tolerance=0.2)
+            tube_mesh = f"{body_name}_tube"
+            spec.add_mesh(
+                name=tube_mesh,
+                file=os.path.relpath(tube_stl, ASSET_DIR).replace("\\", "/"),
+                scale=[1e-3, 1e-3, 1e-3],
+            )
+            geom = body.add_geom()
+            geom.type = mujoco.mjtGeom.mjGEOM_MESH
+            geom.meshname = tube_mesh
+            geom.rgba = np.array(SILVER if per_link_colour else PRINTED_RGBA,
+                                 dtype=float)
+            geom.group = keep.group
+            geom.contype = 0
+            geom.conaffinity = 0
+
+        # Service caps, one geom each. Added rather than fused into the shell
+        # mesh because they are separate printed pieces that come off, and a
+        # single fused mesh would say otherwise.
+        for index, cap in enumerate(placed_caps(body_name)):
+            cap_stl = MESH_DIR / f"{body_name}_cap{index}.stl"
+            export_stl(cap, str(cap_stl), tolerance=0.05, angular_tolerance=0.2)
+            cap_mesh = f"{body_name}_cap{index}"
+            spec.add_mesh(
+                name=cap_mesh,
+                file=os.path.relpath(cap_stl, ASSET_DIR).replace("\\", "/"),
+                scale=[1e-3, 1e-3, 1e-3],
+            )
+            geom = body.add_geom()
+            geom.type = mujoco.mjtGeom.mjGEOM_MESH
+            geom.meshname = cap_mesh
+            geom.rgba = np.array(CAP_RGBA, dtype=float)
+            geom.group = keep.group
+            # Visual only: the shell's collision proxies already cover this
+            # space, and a mesh geom would be taken as its convex hull.
+            geom.contype = 0
+            geom.conaffinity = 0
 
         # Swap the stock motor meshes for the real vendor actuators, mounted
         # where this design puts them.

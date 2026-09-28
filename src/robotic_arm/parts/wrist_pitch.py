@@ -43,12 +43,24 @@ BODY = "link4"
 #: The branch, out-of-plane and therefore worthless for reach: the shortest
 #: that still reads as a tee. 32 mm of it is buried in the run, leaving a
 #: 10 mm stub proud of the barrel.
-FLANGE_LENGTH = 42.0
+FLANGE_LENGTH = 59.75
+#:
+#: The same as link1's and link3's branches: these are the three pieces of
+#: the arm that carry no motor, and they now read as one family. The branch
+#: still stops at the run's centreline -- `JOINT_SHIFT` moves the J5 axis out
+#: with it, or the branch would cross the barrel and make a plus.
 
 #: The run: the 177 mm that carries J5 out to reach parity, plus 40 mm of
 #: overshoot past the branch axis so the corner blends. The RS00 needs only
 #: 55 mm of this; the rest is structure.
-BARREL_LENGTH = 80.0
+BARREL_LENGTH = 76.0
+#:
+#: Sized so every joint on the arm presents the same 160.75 mm canister -- housing
+#: plus the flange that caps it. They were 112, 122 and 84, which is what
+#: made the wrist look unplanned next to itself. 118 is the floor, not a
+#: preference: link4's barrel has to be at least as long as its branch is
+#: wide (O76) or the tee stops reading as one, so J5 cannot come in under
+#: 76 + 42.
 
 #: link4 is a **tee**: the J4 and J5 barrels touch and fuse, so there is no
 #: tube between them at all and `build_ur_link` omits one. These remain

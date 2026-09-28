@@ -101,10 +101,10 @@ class LinkFrame:
 #: 783.9 while link4 stays a compact tee. This is the UR's own proportioning:
 #: long arm segments, small wrist castings.
 JOINT_SHIFT: dict[str, np.ndarray] = {
-    "link2": np.array([-20.34, 19.76, 0.0]),
+    "link2": np.array([-20.34, 32.51, 0.0]),
     "link3": np.array([-41.5, 0.0, 0.0]),
     "link4": np.array([41.5, 0.0, 0.0]),
-    "link5": np.array([-87.0, 86.0, 72.75]),
+    "link5": np.array([-87.0, 86.0, 90.5]),
 }
 
 
