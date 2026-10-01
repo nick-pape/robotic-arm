@@ -299,6 +299,7 @@ def generate_twin(
 
     require(BASELINE_MJCF)
     spec = mujoco.MjSpec.from_file(str(BASELINE_MJCF))
+    single_gripper_actuator(spec)
 
     # Apply any deliberate joint-frame departure to the model as well, or the
     # CAD and the physics disagree: the parts are built against
@@ -344,6 +345,37 @@ def generate_twin(
     spec.compile()
     out.write_text(spec.to_xml())
     return out
+
+
+#: The one actuator the gripper gets, named for the mechanism, not a finger.
+GRIPPER_ACTUATOR = "gripper"
+
+
+def single_gripper_actuator(spec: mujoco.MjSpec) -> mujoco.MjSpec:
+    """Drive the gripper with one actuator, as the real one is driven.
+
+    The real gripper is a single RS00 turning a 16T pinion between two racks:
+    one degree of freedom. Menagerie models it as two finger slides tied
+    together by an equality constraint -- correct, since two bodies move --
+    but then puts a servo on *each* slide, so one mechanism has two motors
+    fighting through a constraint and a policy has two commands for one
+    motion. The equality stays; the right finger's servo goes, and the left
+    one's carries the gripper.
+
+    Keyframe ctrl vectors lose the deleted actuator's entry, so this must run
+    before anything else that indexes ctrl by actuator.
+    """
+    actuators = list(spec.actuators)
+    right = next(i for i, a in enumerate(actuators) if a.target == "joint_right")
+    left = next(a for a in actuators if a.target == "joint_left")
+    for key in spec.keys:
+        ctrl = list(key.ctrl)
+        if ctrl:
+            del ctrl[right]
+            key.ctrl = ctrl
+    spec.delete(actuators[right])
+    left.name = GRIPPER_ACTUATOR
+    return spec
 
 
 #: Printed part meshes are written here and referenced from the generated model.

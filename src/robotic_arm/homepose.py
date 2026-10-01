@@ -270,6 +270,11 @@ def apply_home_zero(spec, pose: dict[str, float], address: dict[str, int]):
             low, high = (float(v) for v in actuator.ctrlrange)
             actuator.ctrlrange = [low - q, high - q]
 
+    # A keyframe's ctrl is a set of position-actuator targets, so it is in
+    # qpos units and has to move with qpos. Shifting only qpos leaves the
+    # servos aimed at the old numbers: load the key and the arm starts in one
+    # pose and immediately drives to another.
+    targets = [actuator.target for actuator in spec.actuators]
     for key in spec.keys:
         if key.name in UNSHIFTED_KEYFRAMES:
             continue
@@ -277,5 +282,11 @@ def apply_home_zero(spec, pose: dict[str, float], address: dict[str, int]):
         for name, q in pose.items():
             qpos[address[name]] -= q
         key.qpos = qpos
+        ctrl = list(key.ctrl)
+        if ctrl:
+            for index, target in enumerate(targets):
+                if target in pose:
+                    ctrl[index] -= pose[target]
+            key.ctrl = ctrl
 
     return spec
