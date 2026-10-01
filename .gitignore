@@ -44,3 +44,9 @@ prints/
 
 # MuJoCo writes this next to the working directory on every viewer launch
 MUJOCO_LOG.TXT
+
+# LeRobot datasets recorded in sim -- regenerate: uv run python -m learning.record
+data/
+
+# Training runs -- lerobot-train --output_dir
+outputs/

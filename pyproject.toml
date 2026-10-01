@@ -25,6 +25,17 @@ cad = [
 viz = [
     "pillow>=10",
 ]
+# Policy simulation in learning/: a task scene and a Gymnasium env. CPU only.
+sim = [
+    "gymnasium>=1.0",
+    "pillow>=10",
+]
+# Learned policies (ACT, ...) run, recorded and trained through LeRobot.
+# Pulls in torch; the PyPI wheels on Windows are CPU builds, which is all a
+# rollout or a recording needs. Train on a CUDA machine.
+policy = [
+    "lerobot[dataset,training]>=0.6,<0.7; python_version >= '3.12'",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -34,4 +45,6 @@ build-backend = "hatchling.build"
 packages = ["src/robotic_arm"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "learning/tests"]
+# learning/ is a top-level package beside src/, imported from the repo root.
+pythonpath = ["."]
