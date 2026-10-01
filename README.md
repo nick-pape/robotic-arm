@@ -32,6 +32,19 @@ uv run --extra viz python scripts/snapshot.py --balancer     --focus link2,link3
 uv run --extra viz python scripts/joint_sections.py
 ```
 
+### Policies in simulation
+
+`learning/` puts the twin to work: a pick-the-cube task, a Gymnasium env in
+LeRobot's layout, a scripted expert, demo recording and ACT training. The
+plan being executed, and how to run it, is in
+[`docs/training-plan.md`](docs/training-plan.md).
+
+```bash
+uv sync --extra sim --extra policy
+uv run python -m learning.rollout --policy pickplace --viewer   # watch the scripted expert
+uv run python -m learning.record && uv run python -m learning.check_dataset
+```
+
 The joint sections are the ones worth looking at first. An assembled-arm
 render cannot show where two parts meet, because the interface is inside the
 shell -- and that gap hid a real fault for several revisions, with the printed
@@ -198,6 +211,8 @@ scripts/
   measure_actuators.py  re-derive bolt geometry from vendor STEP
   view.py               open the twin in the interactive viewer
   render_motion.py      same, offscreen to a GIF (output gitignored)
+learning/           policies in sim: task scene, env, scripted expert, recording
+docs/training-plan.md   what is being trained, how, and what comes next
 spec/               engineering brief
 tests/              one case per spec requirement ID
 ```
