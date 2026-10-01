@@ -57,7 +57,28 @@ MATERIAL = PC_CF
 #: Stock diameter, held so the gripper still mates.
 OUTER_DIAMETER = 57.0
 #: Deeper than stock's 10 mm, to take an 8 mm M6 insert under the spigot recess.
-THICKNESS = 12.0
+THICKNESS = 39.0
+#:
+#: 27 mm longer than stock's 12, which is the number that stops the gripper
+#: hitting the forearm. With the wrist folded back -- J5 at +/-3.14 and J6
+#: anywhere near +/-75 degrees -- the gripper reached **20.9 mm inside**
+#: link3. Standing it further off the wrist is what clears it:
+#:
+#:     extension   worst gripper clearance
+#:        0 mm            -20.92 mm
+#:       10 mm            -11.23
+#:       20 mm             -1.27
+#:       24 mm             +2.72   (under S1's 3 mm)
+#:       27 mm             +5.36   <- this
+#:
+#: `JOINT_SHIFT["gripper_end"]` carries the gripper out with it; the stock
+#: frame does not know the flange grew, so lengthening the flange alone would
+#: simply drive it into the gripper.
+#:
+#: Worth knowing what this does *not* fix: at fully folded poses such as
+#: J4 = J5 = -180 the gripper still reaches link3, and no amount of standoff
+#: helps there -- 60 mm of it still left 42 mm of interference. That one is a
+#: combined-pose problem for the joint limits, not for this part.
 
 #: The collar that actually caps link5's housing. It matches that barrel's
 #: outside diameter, so the joint reads as one continuous cylinder with a

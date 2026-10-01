@@ -54,7 +54,7 @@ BARREL_LENGTH = 76.0
 #: Tube profile between the two ends, as fractions of the run and diameters at
 #: each station.
 TUBE_STATIONS = (0.0, 0.5, 1.0)
-TUBE_DIAMETERS = (52.0, 50.0, 52.0)
+TUBE_DIAMETERS = (64.0, 64.0, 64.0)
 
 #: Slides the tube's target deeper into the housing. Aiming at the housing
 #: centre is right for an in-line joint and wrong for a perpendicular one,

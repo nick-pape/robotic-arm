@@ -105,6 +105,17 @@ JOINT_SHIFT: dict[str, np.ndarray] = {
     "link3": np.array([-41.5, 0.0, 0.0]),
     "link4": np.array([41.5, 0.0, 0.0]),
     "link5": np.array([-87.0, 86.0, 90.5]),
+    #: link6: centres link5's barrel on its own branch. The J6 housing is
+    #: 111.5 mm long but the branch met it 17.65 mm off centre, so it stood
+    #: 73.4 mm proud on one side and 38.1 on the other. That long side is
+    #: what swings into link3 and caps J4's travel -- the limit is a
+    #: link3/link5 contact, not anything at J4 itself. Sliding J6 along its
+    #: own axis evens the barrel up and takes 17.65 mm off the swing radius.
+    "link6": np.array([17.65, 0.0, 0.0]),
+    #: gripper_end: follows link6 out. Lengthening the tool flange alone would
+    #: drive it into the gripper, whose frame comes from the stock model and
+    #: does not know the flange grew.
+    "gripper_end": np.array([0.0, 0.0, 27.0]),
 }
 
 
